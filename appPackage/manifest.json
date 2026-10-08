@@ -1,0 +1,97 @@
+{
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.30/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.30",
+  "version": "1.2.0",
+  "id": "${{TEAMS_APP_ID}}",
+  "developer": {
+    "name": "My App, Inc.",
+    "websiteUrl": "https://www.example.com",
+    "privacyUrl": "https://www.example.com/privacy",
+    "termsOfUseUrl": "https://www.example.com/termsofuse"
+  },
+  "icons": {
+    "color": "color.png",
+    "outline": "outline.png"
+  },
+  "name": {
+    "short": "DevBoard${{APP_NAME_SUFFIX}}",
+    "full": "DevBoard — testes e desenvolvimento"
+  },
+  "description": {
+    "short": "Suites de testes manuais e gestão de issues por projeto.",
+    "full": "Organize por projeto as suites de testes manuais e os issues de desenvolvimento: registe resultados, acompanhe issues em tabela ou board, discuta com menções e anexos e receba notificações no Teams quando algo relevante muda."
+  },
+  "accentColor": "#FFFFFF",
+  "supportsChannelFeatures": "tier1",
+  "bots": [],
+  "composeExtensions": [],
+  "staticTabs": [
+    {
+      "entityId": "index0",
+      "name": "DevBoard",
+      "contentUrl": "${{TAB_ENDPOINT}}/tabs/home",
+      "websiteUrl": "${{TAB_ENDPOINT}}/tabs/home",
+      "scopes": ["personal", "groupChat", "team"]
+    }
+  ],
+  "permissions": ["identity", "messageTeamMembers"],
+  "validDomains": ["${{TAB_DOMAIN}}"],
+  "webApplicationInfo": {
+    "id": "${{ENTRA_CLIENT_ID}}",
+    "resource": "${{ENTRA_RESOURCE_URI}}"
+  },
+  "activities": {
+    "activityTypes": [
+      {
+        "type": "testResult",
+        "description": "Resultado registado num teste",
+        "templateText": "{actor} marcou {test} como {status}"
+      },
+      {
+        "type": "comment",
+        "description": "Novo comentário num teste ou suite",
+        "templateText": "{actor} comentou em {item}"
+      },
+      {
+        "type": "mention",
+        "description": "Menção num comentário",
+        "templateText": "{actor} fez-lhe uma menção em {item}"
+      },
+      {
+        "type": "assignment",
+        "description": "Teste atribuído",
+        "templateText": "{actor} atribuiu-lhe {test}"
+      },
+      {
+        "type": "suiteCreated",
+        "description": "Nova suite disponível",
+        "templateText": "{actor} criou a suite {suite}"
+      },
+      {
+        "type": "testAdded",
+        "description": "Teste adicionado a uma suite",
+        "templateText": "{actor} adicionou {test} a {suite}"
+      },
+      {
+        "type": "suiteChanged",
+        "description": "Suite editada, arquivada, restaurada ou apagada",
+        "templateText": "{actor} {action} a suite {suite}"
+      },
+      {
+        "type": "testChanged",
+        "description": "Teste alterado ou apagado",
+        "templateText": "{actor} {action} {test}"
+      },
+      {
+        "type": "issueAssigned",
+        "description": "Issue atribuído",
+        "templateText": "{actor} atribuiu-lhe {issue}"
+      },
+      {
+        "type": "issueChanged",
+        "description": "Issue mudou de estado ou foi apagado",
+        "templateText": "{actor} {action} {issue}"
+      }
+    ]
+  }
+}

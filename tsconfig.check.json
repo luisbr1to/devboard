@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.node.json",
+  "compilerOptions": { "rootDir": ".", "noEmit": true, "skipLibCheck": true },
+  "include": [
+    "src/index.ts",
+    "src/server/**/*.ts",
+    "src/shared/**/*.ts",
+    "scripts/**/*.ts",
+    "tests/*.test.ts",
+    "tests/e2e/**/*.ts"
+  ]
+}

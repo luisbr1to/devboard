@@ -1,0 +1,241 @@
+/* Design tokens: the only place where colours are defined. Components use var(--token). */
+@import "@fontsource-variable/geist/wght.css";
+@import "@fontsource-variable/geist-mono/wght.css";
+
+:root {
+  --font-sans: "Geist Variable", "Geist", "Segoe UI", system-ui, sans-serif;
+  --font-mono:
+    "Geist Mono Variable", "Geist Mono", ui-monospace, "Cascadia Mono",
+    Consolas, monospace;
+
+  --radius-chip: 6px;
+  --radius-field: 6px;
+  --radius-button: 10px;
+  --radius-card: 14px;
+  --radius-full: 999px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  --sidebar-width: 232px;
+  --header-height: 56px;
+  --content-max: 1240px;
+}
+
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f6f6f8;
+  --surface: #ffffff;
+  --sunken: #f1f1f4;
+  --border: #e3e3e8;
+  --border-strong: #d2d2da;
+  --text: #18181d;
+  --text-2: #55555f;
+  --text-3: #6b6b75;
+  --accent: #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-soft: #eeedfd;
+  --accent-text: #4338ca;
+  --on-accent: #ffffff;
+  --pass-fg: #15703d;
+  --pass-bg: #e6f4ec;
+  --pass-bar: #22a05a;
+  --fail-fg: #b42318;
+  --fail-bg: #fcebe9;
+  --fail-bar: #e5484d;
+  --block-fg: #8a5300;
+  --block-bg: #fdf3dc;
+  --block-bar: #e0a100;
+  --pend-fg: #55555f;
+  --pend-bg: #efeff3;
+  --pend-bar: #e3e3e8;
+  --backdrop: rgb(13 13 17 / 45%);
+  --shadow-overlay:
+    0 16px 40px rgb(24 24 29 / 14%), 0 2px 6px rgb(24 24 29 / 8%);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0d0d11;
+    --surface: #15151b;
+    --sunken: #1b1b22;
+    --border: #26262f;
+    --border-strong: #34343f;
+    --text: #ececf1;
+    --text-2: #a6a6b2;
+    --text-3: #8b8b97;
+    --accent: #5b54e8;
+    --accent-hover: #6e66f5;
+    --accent-soft: #211f45;
+    --accent-text: #a8a3ff;
+    --on-accent: #ffffff;
+    --pass-fg: #5bd38a;
+    --pass-bg: #10261a;
+    --pass-bar: #2fb36a;
+    --fail-fg: #ff8a84;
+    --fail-bg: #2c1416;
+    --fail-bar: #e5484d;
+    --block-fg: #f5b83d;
+    --block-bg: #2a2010;
+    --block-bar: #d99a00;
+    --pend-fg: #a6a6b2;
+    --pend-bg: #1f1f27;
+    --pend-bar: #2c2c36;
+    --backdrop: rgb(0 0 0 / 60%);
+    --shadow-overlay: 0 16px 40px rgb(0 0 0 / 50%);
+  }
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0d0d11;
+  --surface: #15151b;
+  --sunken: #1b1b22;
+  --border: #26262f;
+  --border-strong: #34343f;
+  --text: #ececf1;
+  --text-2: #a6a6b2;
+  --text-3: #8b8b97;
+  --accent: #5b54e8;
+  --accent-hover: #6e66f5;
+  --accent-soft: #211f45;
+  --accent-text: #a8a3ff;
+  --on-accent: #ffffff;
+  --pass-fg: #5bd38a;
+  --pass-bg: #10261a;
+  --pass-bar: #2fb36a;
+  --fail-fg: #ff8a84;
+  --fail-bg: #2c1416;
+  --fail-bar: #e5484d;
+  --block-fg: #f5b83d;
+  --block-bg: #2a2010;
+  --block-bar: #d99a00;
+  --pend-fg: #a6a6b2;
+  --pend-bg: #1f1f27;
+  --pend-bar: #2c2c36;
+  --backdrop: rgb(0 0 0 / 60%);
+  --shadow-overlay: 0 16px 40px rgb(0 0 0 / 50%);
+}
+
+/* Teams high-contrast theme: defer to the system palette. */
+[data-theme="contrast"] {
+  color-scheme: dark;
+  --bg: Canvas;
+  --surface: Canvas;
+  --sunken: Canvas;
+  --border: CanvasText;
+  --border-strong: CanvasText;
+  --text: CanvasText;
+  --text-2: CanvasText;
+  --text-3: CanvasText;
+  --accent: Highlight;
+  --accent-hover: Highlight;
+  --accent-soft: Canvas;
+  --accent-text: LinkText;
+  --on-accent: HighlightText;
+  --pass-fg: CanvasText;
+  --pass-bg: Canvas;
+  --pass-bar: Highlight;
+  --fail-fg: CanvasText;
+  --fail-bg: Canvas;
+  --fail-bar: CanvasText;
+  --block-fg: CanvasText;
+  --block-bg: Canvas;
+  --block-bar: GrayText;
+  --pend-fg: CanvasText;
+  --pend-bg: Canvas;
+  --pend-bar: Canvas;
+  --backdrop: rgb(0 0 0 / 70%);
+  --shadow-overlay: none;
+}
+
+/* Issue statuses, modules and labels: one fg/bg pair per palette name. */
+:root,
+[data-theme="light"] {
+  --tag-gray-fg: #4a4a55;
+  --tag-gray-bg: #ededf1;
+  --tag-blue-fg: #1d4ed8;
+  --tag-blue-bg: #e3ecfd;
+  --tag-teal-fg: #0f6e6e;
+  --tag-teal-bg: #dcf3f2;
+  --tag-green-fg: #15703d;
+  --tag-green-bg: #e6f4ec;
+  --tag-amber-fg: #8a5300;
+  --tag-amber-bg: #fdf3dc;
+  --tag-orange-fg: #b2440a;
+  --tag-orange-bg: #fdebdd;
+  --tag-red-fg: #b42318;
+  --tag-red-bg: #fcebe9;
+  --tag-purple-fg: #6d28d9;
+  --tag-purple-bg: #efe7fd;
+  --tag-pink-fg: #b0236b;
+  --tag-pink-bg: #fce7f1;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --tag-gray-fg: #b4b4c0;
+    --tag-gray-bg: #23232c;
+    --tag-blue-fg: #8ab4ff;
+    --tag-blue-bg: #15213b;
+    --tag-teal-fg: #5fd4cf;
+    --tag-teal-bg: #0f2a2a;
+    --tag-green-fg: #5bd38a;
+    --tag-green-bg: #10261a;
+    --tag-amber-fg: #f5b83d;
+    --tag-amber-bg: #2a2010;
+    --tag-orange-fg: #ff9d66;
+    --tag-orange-bg: #2e1a0e;
+    --tag-red-fg: #ff8a84;
+    --tag-red-bg: #2c1416;
+    --tag-purple-fg: #c4a5ff;
+    --tag-purple-bg: #241a3d;
+    --tag-pink-fg: #ff8fc4;
+    --tag-pink-bg: #33142a;
+  }
+}
+[data-theme="dark"] {
+  --tag-gray-fg: #b4b4c0;
+  --tag-gray-bg: #23232c;
+  --tag-blue-fg: #8ab4ff;
+  --tag-blue-bg: #15213b;
+  --tag-teal-fg: #5fd4cf;
+  --tag-teal-bg: #0f2a2a;
+  --tag-green-fg: #5bd38a;
+  --tag-green-bg: #10261a;
+  --tag-amber-fg: #f5b83d;
+  --tag-amber-bg: #2a2010;
+  --tag-orange-fg: #ff9d66;
+  --tag-orange-bg: #2e1a0e;
+  --tag-red-fg: #ff8a84;
+  --tag-red-bg: #2c1416;
+  --tag-purple-fg: #c4a5ff;
+  --tag-purple-bg: #241a3d;
+  --tag-pink-fg: #ff8fc4;
+  --tag-pink-bg: #33142a;
+}
+[data-theme="contrast"] {
+  --tag-gray-fg: CanvasText;
+  --tag-gray-bg: Canvas;
+  --tag-blue-fg: CanvasText;
+  --tag-blue-bg: Canvas;
+  --tag-teal-fg: CanvasText;
+  --tag-teal-bg: Canvas;
+  --tag-green-fg: CanvasText;
+  --tag-green-bg: Canvas;
+  --tag-amber-fg: CanvasText;
+  --tag-amber-bg: Canvas;
+  --tag-orange-fg: CanvasText;
+  --tag-orange-bg: Canvas;
+  --tag-red-fg: CanvasText;
+  --tag-red-bg: Canvas;
+  --tag-purple-fg: CanvasText;
+  --tag-purple-bg: Canvas;
+  --tag-pink-fg: CanvasText;
+  --tag-pink-bg: Canvas;
+}

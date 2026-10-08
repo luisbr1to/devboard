@@ -1,0 +1,25 @@
+{
+  "title": "Checkout — revisão manual de hoje",
+  "description": "## Objetivo\nValidar os pagamentos antes de disponibilizar a nova versão.\n\n### Pré-condições\n- Ambiente de staging disponível\n- Utilizador com produtos no carrinho",
+  "provenance": {
+    "repository": "https://example.com/equipa/produto",
+    "branch": "master",
+    "commit": "replace-with-commit-sha"
+  },
+  "tests": [
+    {
+      "title": "Pagamento com cartão",
+      "instructions": "1. Abrir o checkout.\n2. Introduzir um cartão de teste válido.\n3. Confirmar o pagamento.",
+      "expectedResult": "O pedido é confirmado e o total corresponde ao valor do carrinho."
+    },
+    {
+      "title": "Cartão recusado",
+      "instructions": "Usar o cartão de teste recusado do ambiente de staging.",
+      "steps": [
+        "Introduzir um cartão de teste recusado.",
+        "Tentar confirmar o pagamento."
+      ],
+      "expectedResult": "É apresentada uma mensagem clara e o pedido não é confirmado."
+    }
+  ]
+}
