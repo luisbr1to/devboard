@@ -279,3 +279,7 @@ Os ficheiros de ambiente/segredos/testes são excluídos do pacote de deploy. N�
 `src/Tab`: interface/auth cliente; `src/server`: API/auth/SQL; `src/shared`: contratos e regras (incluindo a leitura de passos em `steps.ts`); `migrations`: esquema versionado; `scripts`: migração/publicação; `tests`: verificações locais.
 
 [roadmap.md](roadmap.md) · [backlog.md](backlog.md) · [AGENTS.md](AGENTS.md) · [CLAUDE.md](CLAUDE.md) · [skills.md](skills.md)
+
+## Licença
+
+Distribuído sob a [Apache License 2.0](LICENSE).
