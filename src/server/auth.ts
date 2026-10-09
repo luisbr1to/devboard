@@ -1,6 +1,6 @@
 import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from "jose";
 import { ConfidentialClientApplication } from "@azure/msal-node";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import type { User } from "../shared/contracts";
 import type { ActivityPayload } from "./teams";
 const uuidPattern =
@@ -275,7 +275,41 @@ export const localDirectory: readonly DirectoryPerson[] = Object.freeze([
   }),
 ]);
 
-export function localAuthentication(): Authentication {
+// Optional replacement for the built-in people, from an ignored .env:
+// TESTHUB_LOCAL_USERS=[{"name":"…","email":"…"}]. Each oid is derived from the email,
+// so the same person keeps the same local account across restarts.
+export function localDirectoryFromEnv(
+  value: string | undefined,
+): readonly DirectoryPerson[] {
+  if (!value?.trim()) return localDirectory;
+  let entries: unknown;
+  try {
+    entries = JSON.parse(value);
+  } catch {
+    throw new Error("TESTHUB_LOCAL_USERS deve ser uma lista JSON.");
+  }
+  if (!Array.isArray(entries) || !entries.length)
+    throw new Error("TESTHUB_LOCAL_USERS deve ser uma lista JSON não vazia.");
+  const people = entries.map((entry) => {
+    const name = typeof entry?.name === "string" ? entry.name.trim() : "";
+    const email =
+      typeof entry?.email === "string" ? entry.email.trim().toLowerCase() : "";
+    if (!name || !/^[^@\s]+@[^@\s]+$/.test(email))
+      throw new Error(
+        "TESTHUB_LOCAL_USERS: cada pessoa precisa de name e email.",
+      );
+    const hex = createHash("sha256").update(`local:${email}`).digest("hex");
+    const oid = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+    return Object.freeze({ oid, name, email });
+  });
+  if (new Set(people.map((person) => person.email)).size !== people.length)
+    throw new Error("TESTHUB_LOCAL_USERS tem emails repetidos.");
+  return Object.freeze(people);
+}
+
+export function localAuthentication(
+  directory: readonly DirectoryPerson[] = localDirectory,
+): Authentication {
   const sessions = new Map<
     string,
     { identity: Omit<Identity, "token">; expiresAt: number }
@@ -290,10 +324,10 @@ export function localAuthentication(): Authentication {
   };
   return {
     mode: "local",
-    directory: localDirectory,
+    directory,
     authenticate,
     async createSession(oid) {
-      const person = localDirectory.find((candidate) => candidate.oid === oid);
+      const person = directory.find((candidate) => candidate.oid === oid);
       if (!person) throw new HttpError(400, "Utilizador local inválido.");
       const token = `local_${randomBytes(32).toString("base64url")}`;
       const identity = { ...person, tenantId: localTenantId };
@@ -309,7 +343,7 @@ export function localAuthentication(): Authentication {
     async search(token, query) {
       await authenticate(token);
       const normalized = query.trim().toLocaleLowerCase("pt-PT");
-      return localDirectory.filter(
+      return directory.filter(
         (person) =>
           person.name.toLocaleLowerCase("pt-PT").includes(normalized) ||
           person.email.toLocaleLowerCase("pt-PT").includes(normalized),
@@ -317,7 +351,7 @@ export function localAuthentication(): Authentication {
     },
     async person(token, oid) {
       await authenticate(token);
-      const person = localDirectory.find((candidate) => candidate.oid === oid);
+      const person = directory.find((candidate) => candidate.oid === oid);
       if (!person) throw new HttpError(404, "Utilizador local inexistente.");
       return person;
     },
@@ -333,7 +367,7 @@ export function createAuthentication(
       throw new Error(
         "AUTH_MODE=local não pode ser usado com NODE_ENV=production.",
       );
-    return localAuthentication();
+    return localAuthentication(localDirectoryFromEnv(env.TESTHUB_LOCAL_USERS));
   }
   if (mode !== "microsoft")
     throw new Error("AUTH_MODE deve ser 'microsoft' ou 'local'.");

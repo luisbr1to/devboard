@@ -13,10 +13,10 @@ import { Button, ErrorMessage, Modal } from "./components";
 import {
   buildImport,
   distinct,
+  distinctModules,
   guessCategory,
   importFields,
   splitLabels,
-  splitModules,
   splitPeople,
   suggestColumns,
   suggestMember,
@@ -92,7 +92,7 @@ export function IssueImport({
     return {
       people,
       statuses: distinct(sheet, mapping.status),
-      modules: distinct(sheet, mapping.modules, splitModules),
+      modules: distinctModules(sheet, mapping),
       labels: distinct(sheet, mapping.labels, splitLabels),
     };
   }, [sheet, mapping]);

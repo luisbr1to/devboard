@@ -2490,6 +2490,70 @@ input[type="checkbox"] {
 .members-card .card-heading .card-title {
   margin: 0;
 }
+.roles-guide-button {
+  margin-left: auto;
+}
+.modal-surface:has(.roles-table) {
+  width: min(840px, calc(100vw - 32px));
+}
+.data-table.roles-table {
+  min-width: 600px;
+}
+.roles-table th[scope="row"] {
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border);
+  border-bottom: 0;
+  background: none;
+  color: var(--text);
+  font-size: inherit;
+  font-weight: 500;
+  white-space: normal;
+}
+.roles-table tbody tr:first-child th {
+  border-top: 0;
+}
+/* The permission column stays visible while the role columns scroll on narrow screens. */
+.roles-table th:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 180px;
+}
+.roles-table th[scope="row"] {
+  background: var(--surface);
+}
+.roles-table tbody tr:hover th[scope="row"] {
+  background: var(--sunken);
+}
+.roles-table td {
+  width: 13%;
+  text-align: center;
+}
+.roles-yes,
+.roles-no {
+  display: inline-flex;
+}
+.roles-yes svg,
+.roles-no svg {
+  width: 18px;
+  height: 18px;
+}
+.roles-yes {
+  color: var(--pass-fg);
+}
+.roles-no {
+  color: var(--text-3);
+}
+.roles-partial {
+  color: var(--text-2);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.roles-note {
+  margin: var(--space-3) 0 0;
+  color: var(--text-2);
+  font-size: 12px;
+}
 .member-toolbar {
   margin-bottom: var(--space-2);
 }

@@ -4,6 +4,7 @@ import Papa from "papaparse";
 import {
   buildImport,
   distinct,
+  distinctModules,
   parseDay,
   splitModules,
   splitPeople,
@@ -101,6 +102,7 @@ test("import: columns of a real-world test sheet are recognised", () => {
   assert.equal(header(mapping.assignees), "User DSI");
   assert.equal(header(mapping.status), "Estado DSI");
   assert.equal(header(mapping.modules), "Módulo");
+  assert.equal(header(mapping.submodules), "Sub-módulo");
   assert.equal(header(mapping.labels), "Tipo");
   assert.equal(header(mapping.priority), "Prioridade DSI+DM");
   assert.equal(header(mapping.estimate), "Estimativa DSI");
@@ -112,10 +114,7 @@ test("import: columns of a real-world test sheet are recognised", () => {
 test("import: values are split, grouped and matched", () => {
   assert.deepEqual(splitPeople("irocha / tferreira"), ["irocha", "tferreira"]);
   assert.deepEqual(splitModules("frontend - mobile"), ["frontend", "mobile"]);
-  assert.deepEqual(splitModules("Norte — Frontend"), [
-    "Norte",
-    "Frontend",
-  ]);
+  assert.deepEqual(splitModules("Norte — Frontend"), ["Norte", "Frontend"]);
   assert.deepEqual(splitModules("site+app+eShop"), ["site", "app", "eShop"]);
   assert.deepEqual(splitModules("Menu frontend"), ["Menu frontend"]);
   assert.equal(suggestMember("irocha", members), "u-ines");
@@ -172,7 +171,7 @@ test("import: payload follows the associations and skips empty rows", () => {
     decisions.people[key] = suggestMember(name, members);
   for (const [key, { name }] of distinct(sheet, mapping.status))
     decisions.statuses[key] = suggestStatus(name, config);
-  for (const [key, { name }] of distinct(sheet, mapping.modules, splitModules))
+  for (const [key, { name }] of distinctModules(sheet, mapping))
     decisions.modules[key] = suggestTag(name, config.modules);
   for (const [key, { name }] of distinct(sheet, mapping.labels))
     decisions.labels[key] = suggestTag(name, config.labels);
@@ -190,7 +189,20 @@ test("import: payload follows the associations and skips empty rows", () => {
   );
   assert.deepEqual(
     payload.newModules.map((item) => item.name),
-    ["Backoffice", "Norte", "Site", "App", "eShop"],
+    [
+      "Backoffice",
+      "Norte",
+      "Site",
+      "App",
+      "eShop",
+      "Perfil",
+      "Pop-ups",
+      "Newsletters",
+      "Artigo",
+      "Menu de topo (mega-menu)",
+      "Relatórios",
+      "Artigos",
+    ],
   );
   const [first, second, third] = payload.rows;
   assert.deepEqual(
@@ -209,7 +221,7 @@ test("import: payload follows the associations and skips empty rows", () => {
       reporterId: "u-carla",
       reporterNote: null,
       assigneeIds: ["u-ines"],
-      modules: ["m-front"],
+      modules: ["m-front", "perfil"],
       labels: [],
       comments: 2,
     },
@@ -227,5 +239,12 @@ test("import: payload follows the associations and skips empty rows", () => {
   // People without an association are not assigned.
   const unmatched = payload.rows.find((row) => row.externalRef === "284")!;
   assert.deepEqual(unmatched.assigneeIds, []);
-  assert.deepEqual(unmatched.modules, ["norte", "m-front"]);
+  assert.deepEqual(unmatched.modules, [
+    "norte",
+    "m-front",
+    "menu de topo (mega-menu)",
+  ]);
+  // A row without a submodule keeps only its modules.
+  const noSubmodule = payload.rows.find((row) => row.externalRef === "137")!;
+  assert.deepEqual(noSubmodule.modules, ["site", "app", "eshop"]);
 });

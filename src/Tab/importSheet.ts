@@ -14,6 +14,7 @@ export type FieldKey =
   | "assignees"
   | "status"
   | "modules"
+  | "submodules"
   | "labels"
   | "priority"
   | "estimate"
@@ -45,6 +46,12 @@ export const importFields: { key: FieldKey; label: string; hints: string[] }[] =
       hints: ["estado dsi", "estado", "status"],
     },
     { key: "modules", label: "Módulos", hints: ["modulo", "modulos"] },
+    // Submodules become modules too: the issue gets both «Frontend» and «Carrinho».
+    {
+      key: "submodules",
+      label: "Submódulos",
+      hints: ["sub-modulo", "submodulo", "sub-modulos", "submodulos"],
+    },
     { key: "labels", label: "Labels", hints: ["tipo", "labels", "label"] },
     {
       key: "priority",
@@ -135,6 +142,21 @@ export function distinct(
       if (current) current.count++;
       else values.set(key, { name: part, count: 1 });
     }
+  return values;
+}
+
+/** Values of the module and submodule columns, which both become modules. */
+export function distinctModules(sheet: Sheet, mapping: ColumnMapping) {
+  const values = distinct(sheet, mapping.modules, splitModules);
+  for (const [key, value] of distinct(
+    sheet,
+    mapping.submodules,
+    splitModules,
+  )) {
+    const current = values.get(key);
+    if (current) current.count += value.count;
+    else values.set(key, value);
+  }
   return values;
 }
 
@@ -323,7 +345,8 @@ export function buildImport(
       ],
       modules: [
         ...new Set(
-          splitModules(cell(row, mapping.modules))
+          [mapping.modules, mapping.submodules]
+            .flatMap((column) => splitModules(cell(row, column)))
             .map((value) => resolve(decisions.modules, value))
             .filter((value): value is string => !!value),
         ),

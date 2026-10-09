@@ -5,6 +5,7 @@ import {
   createAuthentication,
   localAuthentication,
   localDirectory,
+  localDirectoryFromEnv,
   validateToken,
 } from "../src/server/auth";
 const tenantId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -93,4 +94,41 @@ test("local authentication is opt-in and rejected in production", () => {
     /não pode ser usado/,
   );
   assert.throws(() => createAuthentication({ AUTH_MODE: "invalid" }));
+});
+
+test("the local directory can be replaced from the environment", () => {
+  assert.equal(localDirectoryFromEnv(undefined), localDirectory);
+  const value = JSON.stringify([
+    { name: "Pessoa Um", email: "Um@Exemplo.test" },
+    { name: "Pessoa Dois", email: "dois@exemplo.test" },
+  ]);
+  const people = localDirectoryFromEnv(value);
+  assert.deepEqual(
+    people.map((person) => person.email),
+    ["um@exemplo.test", "dois@exemplo.test"],
+  );
+  assert.match(
+    people[0].oid,
+    /^[\da-f]{8}-[\da-f]{4}-4[\da-f]{3}-8[\da-f]{3}-[\da-f]{12}$/,
+  );
+  assert.deepEqual(localDirectoryFromEnv(value), people);
+  assert.notEqual(people[0].oid, people[1].oid);
+  const authentication = createAuthentication({
+    AUTH_MODE: "local",
+    TESTHUB_LOCAL_USERS: value,
+  });
+  assert.deepEqual(authentication.directory, people);
+  assert.throws(() => localDirectoryFromEnv("{"), /lista JSON/);
+  assert.throws(() => localDirectoryFromEnv("[]"), /não vazia/);
+  assert.throws(
+    () => localDirectoryFromEnv('[{"name":"Sem email"}]'),
+    /name e email/,
+  );
+  assert.throws(
+    () =>
+      localDirectoryFromEnv(
+        '[{"name":"A","email":"a@x.test"},{"name":"B","email":"A@x.test"}]',
+      ),
+    /repetidos/,
+  );
 });

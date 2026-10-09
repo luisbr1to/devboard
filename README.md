@@ -86,7 +86,7 @@ Para a integração com o Teams e o Microsoft Entra, veja [Microsoft Entra e Tea
 
 ### Membros e acesso
 
-- Definições → Geral mostra os membros numa tabela com pesquisa por nome ou email e filtro por papel (Proprietários, Membros, Leitores, Bloqueados).
+- Definições → Geral mostra os membros numa tabela com pesquisa por nome ou email e filtro por papel (Proprietários, Membros, Leitores, Bloqueados). O botão **Papéis e permissões** abre uma tabela que compara o que o leitor, o membro, o proprietário e o administrador podem fazer.
 - Papéis: **Proprietário**, **Membro** e **Leitor** (só leitura). O leitor consulta suites, testes e issues, mas não edita, não comenta, não regista resultados e não pode ser responsável; ao tornar alguém leitor, as atribuições em testes e issues ativos são removidas e ficam no histórico. A regra é aplicada no servidor (qualquer escrita devolve 403).
 - **Bloqueio temporário** (proprietários, nunca a si próprios nem a outro proprietário): o membro deixa de ver o projeto, as notificações e os resultados de pesquisa desse projeto até ser desbloqueado ou até à data escolhida. Papel, dados e atribuições mantêm-se. A migração `010_member_access.sql` acrescenta o papel e os campos do bloqueio.
 
@@ -102,7 +102,7 @@ Para a integração com o Teams e o Microsoft Entra, veja [Microsoft Entra e Tea
 - Um membro só apaga os issues de que é reporter; proprietários e administradores apagam qualquer issue.
 - **Ações em lote** (proprietários e administradores, vista Tabela): caixas de seleção por linha e por página. Em Ativos, «Arquivar selecionados» e «Apagar selecionados»; em Arquivados, «Restaurar selecionados» e «Apagar selecionados». «Arquivar por regra» arquiva todos os issues ativos de um estado concluído (ex.: «Duplicado», «Resolvido») ou de todos os concluídos, indicando o número afetado antes de confirmar; o histórico de cada issue indica a regra usada. Cada ação corre numa só transação e é recusada por inteiro se algum item tiver sido alterado entretanto.
 - Notificações: atribuição para quem foi atribuído por outra pessoa; comentários para reporter, responsáveis e quem já comentou; menções; mudança de estado e eliminação para reporter e responsáveis. Também chegam ao feed do Teams (tipos `issueAssigned` e `issueChanged`).
-- **Importar** (proprietários) de `.xlsx` ou `.csv`: o ficheiro é lido no browser e um assistente associa colunas, pessoas, estados, módulos e tipos/labels ao projeto, com sugestões automáticas (ignora maiúsculas e acentos; `irocha` ↔ Inês Rocha). As colunas de observações entram como comentários de quem importa. Linhas com uma referência já importada são ignoradas. A importação é transacional, segura em repetições (Idempotency-Key) e **não envia notificações**.
+- **Importar** (proprietários) de `.xlsx` ou `.csv`: o ficheiro é lido no browser e um assistente associa colunas, pessoas, estados, módulos e tipos/labels ao projeto, com sugestões automáticas (ignora maiúsculas e acentos; `irocha` ↔ Inês Rocha). A coluna de submódulos (ex.: «Sub-módulo») também cria módulos: uma linha `frontend` / `Carrinho` fica com os módulos Frontend e Carrinho. As colunas de observações entram como comentários de quem importa. Linhas com uma referência já importada são ignoradas. A importação é transacional, segura em repetições (Idempotency-Key) e **não envia notificações**.
 
 Não executa testes automaticamente nem chama um fornecedor de IA. Não cria recursos cloud ou publica a aplicação por si.
 
@@ -162,7 +162,7 @@ As migrações usam transação, lock e uma tabela `schema_migrations`. Escolha 
 
 ### Autenticação local
 
-Defina `AUTH_MODE=local` apenas no `.env` ignorado e execute `npm run dev`. Abra `http://localhost:3978/tabs/home/` quando não usar certificados. A página permite iniciar sessão como Ana, João, Marta, Rui ou Inês, ou como Carla e Tomás, que têm email externo para simular convidados do Teams; estas identidades são definidas pelo servidor e usam sessões bearer aleatórias com duração máxima de 12 horas. Pode mudar de utilizador para validar permissões, atribuição e histórico. A pesquisa de membros usa o mesmo diretório local.
+Defina `AUTH_MODE=local` apenas no `.env` ignorado e execute `npm run dev`. Abra `http://localhost:3978/tabs/home/` quando não usar certificados. A página permite iniciar sessão como Ana, João, Marta, Rui ou Inês, ou como Carla e Tomás, que têm email externo para simular convidados do Teams; estas identidades são definidas pelo servidor e usam sessões bearer aleatórias com duração máxima de 12 horas. Pode mudar de utilizador para validar permissões, atribuição e histórico. A pesquisa de membros usa o mesmo diretório local. Para usar outras pessoas, defina no `.env` `TESTHUB_LOCAL_USERS` com uma lista JSON (`[{"name":"…","email":"…"}]`): substitui as identidades predefinidas e o `oid` de cada pessoa é derivado do email, pelo que se mantém entre reinícios. O `seed:demo` precisa das identidades predefinidas.
 
 O modo local está desativado por predefinição. O servidor recusa arrancar com `AUTH_MODE=local` quando `NODE_ENV=production`; o App Service e o fluxo Agents Toolkit forçam `AUTH_MODE=microsoft`. As sessões locais residem apenas em memória e são invalidadas quando o servidor reinicia. Não use este modo numa rede partilhada ou numa implantação.
 

@@ -21,6 +21,7 @@ import {
 import { DefinitionForm } from "./forms";
 import { IssueSettings } from "./IssueSettings";
 import { MembersTable } from "./MembersTable";
+import { RolesGuide } from "./RolesGuide";
 interface DirectoryPerson {
   oid: string;
   name: string;
@@ -138,6 +139,7 @@ export function Settings({
             <div className="card-heading">
               <h2 className="card-title">Membros do projeto</h2>
               <span className="count-pill mono">{members.length}</span>
+              <RolesGuide />
             </div>
             <MembersTable
               project={project}
