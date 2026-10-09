@@ -1142,6 +1142,9 @@ input[type="checkbox"] {
 .test-table .title-column {
   min-width: 180px;
 }
+.test-table .priority-column {
+  white-space: nowrap;
+}
 @container (max-width: 1040px) {
   .suite-table .creator-column {
     display: none;
@@ -1160,17 +1163,13 @@ input[type="checkbox"] {
 }
 @container (max-width: 640px) {
   .suite-table,
-  .suite-table tbody,
-  .test-table,
-  .test-table tbody {
+  .suite-table tbody {
     display: block;
   }
-  .suite-table thead,
-  .test-table thead {
+  .suite-table thead {
     display: none;
   }
-  .suite-table tr,
-  .test-table tr {
+  .suite-table tr {
     display: grid;
     align-items: center;
     gap: var(--space-2) var(--space-3);
@@ -1184,22 +1183,70 @@ input[type="checkbox"] {
       "title title title"
       "progress progress progress";
   }
-  .test-table tr {
-    grid-template-columns: 28px auto minmax(0, 1fr) auto;
-    grid-template-areas:
-      "drag id status action"
-      "drag title title title"
-      "drag assignee assignee testers";
-    padding-left: var(--space-2);
-  }
-  .suite-table tbody tr:first-child,
-  .test-table tbody tr:first-child {
+  .suite-table tbody tr:first-child {
     border-top: 0;
   }
   .suite-table td,
   .suite-table td.title-column,
   .suite-table td.progress-column,
-  .suite-table td.id-column,
+  .suite-table td.id-column {
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    padding: 0 !important;
+    border: 0;
+  }
+  .suite-table td.status-column {
+    justify-self: start;
+  }
+  .suite-table .id-column {
+    grid-area: id;
+  }
+  .suite-table .status-column {
+    grid-area: status;
+  }
+  .suite-table .title-column {
+    grid-area: title;
+  }
+  .suite-table .progress-column {
+    grid-area: progress;
+  }
+  .suite-table .action-column {
+    grid-area: action;
+    justify-self: end;
+  }
+  .suite-table .creator-column,
+  .suite-table .date-column {
+    display: none;
+  }
+}
+/* The test table has more columns, so it becomes cards earlier. */
+@container (max-width: 760px) {
+  .test-table,
+  .test-table tbody {
+    display: block;
+  }
+  .test-table thead {
+    display: none;
+  }
+  .test-table tr {
+    display: grid;
+    align-items: center;
+    gap: var(--space-2) var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border-top: 1px solid var(--border);
+  }
+  .test-table tr {
+    grid-template-columns: 28px auto auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "drag id priority status action"
+      "drag title title title title"
+      "drag assignee assignee assignee testers";
+    padding-left: var(--space-2);
+  }
+  .test-table tbody tr:first-child {
+    border-top: 0;
+  }
   .test-table td,
   .test-table td.title-column,
   .test-table td.id-column {
@@ -1209,26 +1256,21 @@ input[type="checkbox"] {
     padding: 0 !important;
     border: 0;
   }
-  .suite-table td.status-column,
   .test-table td.status-column {
     justify-self: start;
   }
-  .suite-table .id-column,
   .test-table .id-column {
     grid-area: id;
   }
-  .suite-table .status-column,
   .test-table .status-column {
     grid-area: status;
   }
-  .suite-table .title-column,
+  .test-table .priority-column {
+    grid-area: priority;
+  }
   .test-table .title-column {
     grid-area: title;
   }
-  .suite-table .progress-column {
-    grid-area: progress;
-  }
-  .suite-table .action-column,
   .test-table .action-column {
     grid-area: action;
     justify-self: end;
@@ -1245,8 +1287,6 @@ input[type="checkbox"] {
     grid-area: testers;
     justify-self: end;
   }
-  .suite-table .creator-column,
-  .suite-table .date-column,
   .test-table .date-column {
     display: none;
   }

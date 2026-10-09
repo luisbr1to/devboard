@@ -23,6 +23,8 @@ export const stepStatusSchema = z.enum(["pending", "passed", "failed"]);
 export type StepStatus = z.infer<typeof stepStatusSchema>;
 const title = z.string().trim().min(1).max(200);
 const stepBody = z.string().trim().min(1).max(2000);
+/** 1 (Crítica) to 5 (Mínima), shared by tests and issues. */
+const priority = z.number().int().min(1).max(5).nullable();
 const ids = (max: number) => z.array(z.string().uuid()).max(max).default([]);
 const markdown = z.string().max(50000).default("");
 const projectIcon = z
@@ -48,6 +50,8 @@ export const testInput = z
     steps: z.array(stepBody).max(100).optional(),
     expectedResult: markdown,
     assigneeId: z.string().uuid().nullable().optional(),
+    /** Omitted on an edit, the current priority is kept. */
+    priority: priority.optional(),
   })
   .strict();
 /** Suite creation may assign by email; the server resolves it to a project member. */
@@ -105,7 +109,9 @@ export const commentInput = z
   });
 export const stepResultInput = z.object({ status: stepStatusSchema }).strict();
 export const setupInput = z
-  .object({ code: z.string().trim().min(1, "Indique o código de setup.").max(200) })
+  .object({
+    code: z.string().trim().min(1, "Indique o código de setup.").max(200),
+  })
   .strict();
 export const adminInput = z.object({ oid: z.string().uuid() }).strict();
 export const memberInput = z
@@ -164,7 +170,6 @@ export const issueTagInput = z
   .strict();
 /** Duplicates are ignored by the server. */
 const uuids = (max: number) => z.array(z.string().uuid()).max(max);
-const priority = z.number().int().min(1).max(5).nullable();
 const estimate = z.number().min(0).max(99999).nullable();
 const isoDate = z
   .string()
@@ -363,6 +368,7 @@ export interface TestCase {
   instructions: string;
   expectedResult: string;
   assigneeId: string | null;
+  priority: number | null;
   status: Status;
   position: number;
   createdAt: string;

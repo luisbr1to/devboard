@@ -14,6 +14,7 @@ import type {
   Status,
 } from "../shared/contracts";
 import { statusLabels } from "../shared/contracts";
+import { priorityLabels } from "./issueUi";
 import {
   Button,
   IconButton,
@@ -85,6 +86,7 @@ export function DefinitionForm({
   const cleanSteps = steps.map((step) => step.trim()).filter(Boolean);
   const [expected, setExpected] = useState(test?.expectedResult || "");
   const [assignee, setAssignee] = useState(test?.assigneeId || "");
+  const [priority, setPriority] = useState(test?.priority ?? null);
   const [icon, setIcon] = useState<string | null>(project?.icon || null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -144,6 +146,7 @@ export function DefinitionForm({
                   ...(test || cleanSteps.length ? { steps: cleanSteps } : {}),
                   expectedResult: expected,
                   assigneeId: assignee || null,
+                  priority,
                 },
                 openedVersion,
               );
@@ -216,6 +219,24 @@ export function DefinitionForm({
               value={expected}
               onChange={setExpected}
             />
+            <label className="field">
+              Prioridade
+              <select
+                value={priority ?? ""}
+                onChange={(event) =>
+                  setPriority(
+                    event.target.value ? Number(event.target.value) : null,
+                  )
+                }
+              >
+                <option value="">Sem prioridade</option>
+                {[1, 2, 3, 4, 5].map((value) => (
+                  <option key={value} value={value}>
+                    {priorityLabels[value]}
+                  </option>
+                ))}
+              </select>
+            </label>
             <label className="field">
               Responsável
               <select

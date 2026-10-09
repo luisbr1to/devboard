@@ -77,6 +77,8 @@ Em 8 de outubro de 2026 (ações em lote): `typecheck`, 51 testes de API/runtime
 
 Em 8 de outubro de 2026 (colunas do board): `typecheck`, 52 testes de API/runtime (1 novo: disposição do board por pessoa e projeto), 14 testes rápidos Playwright (1 novo: ocultar, reordenar por arrastar e teclado, persistência e repor) e os 2 cenários end-to-end Docker concluídos. A preferência `issues.board.<projectId>` guarda `{ order, hidden }` e só é aceite para projetos a que a pessoa tem acesso.
 
+Em 9 de outubro de 2026 (prioridade dos testes): `typecheck`, 54 testes de API/runtime (1 novo: prioridade opcional na publicação por chave, mantida quando omitida numa edição, sem repor o resultado, copiada ao duplicar e recusada fora de 1–5) e 14 testes rápidos Playwright (o de testes de suite verifica a coluna Prioridade antes do Estado). A tabela de testes passa a cartões abaixo de 760 px de largura do contentor, para caber a nova coluna. A migração aditiva `012_test_priority.sql` foi aplicada à base de desenvolvimento `testhub`; os cenários end-to-end Docker não correram nesta revisão.
+
 Não foram fornecidas credenciais Entra para a aceitação real. Não foram criados recursos cloud nem publicados pacotes Teams. Uma eventual implantação alojada terá de fornecer o seu próprio PostgreSQL e validar as migrações nesse ambiente. Atualizar este registo com os resultados efetivamente obtidos.
 
 ## Trabalho de desenvolvimento local

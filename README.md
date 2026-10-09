@@ -60,6 +60,7 @@ Para a integração com o Teams e o Microsoft Entra, veja [Microsoft Entra e Tea
 - Estado da suite calculado pelos testes: qualquer rejeitado → Rejeitado; todos aprovados → Aprovado; caso contrário → Pendente.
 - Progresso = testes com resultado / total. Uma suite 100% revista pode conter rejeições. Suites vazias ficam pendentes.
 - Alterar instruções/resultado esperado repõe pendente. Reabrir mantém o histórico.
+- Cada teste pode ter uma **prioridade** (Crítica, Alta, Média, Baixa ou Mínima, a mesma escala dos issues), mostrada na coluna antes do Estado e editada no formulário do teste. Alterar a prioridade fica no histórico mas não repõe o resultado. A migração `012_test_priority.sql` acrescenta a coluna.
 - Duplicar cria uma suite independente pendente, sem copiar resultados ou discussões.
 - Proprietários arquivam suites, consultam **Arquivadas** e restauram sem perder resultados, responsáveis ou comentários. Arquivadas são apenas de leitura. Proprietários e administradores selecionam várias suites para as arquivar, restaurar ou apagar de uma vez, numa só transação.
 - Projetos podem ter uma imagem até 48 × 48 px e ser apagados por um proprietário. A eliminação é lógica: o projeto desaparece e deixa de aceitar acessos, mantendo os dados na base para retenção segura.
@@ -225,7 +226,7 @@ Atualize a URI Entra, o callback e o manifesto quando mudar o domínio/ambiente.
 
 Crie projeto → Definições → Publicação por IA → Criar chave. Guarde-a quando for apresentada; não será recuperável. A chave só permite criar suites nesse projeto.
 
-Adapte o seu prompt/script para gerar [examples/suite.json](examples/suite.json). Cada teste tem título, instruções Markdown, `steps` opcionais (lista de textos) e resultado esperado; sem `steps`, a primeira lista das instruções é convertida em passos. `assigneeId` é opcional e deve corresponder a um membro local do projeto; em alternativa, `assigneeEmail` (nunca os dois) é resolvido pelo servidor para o membro do projeto com esse email, e a publicação é recusada se não existir. O criador da suite é sempre o autor verificado (`Integração: <nome da chave>`), nunca um valor enviado pelo cliente. Não envie estados/resultados: os testes começam pendentes.
+Adapte o seu prompt/script para gerar [examples/suite.json](examples/suite.json). Cada teste tem título, instruções Markdown, `steps` opcionais (lista de textos), resultado esperado e `priority` opcional (inteiro de 1 = Crítica a 5 = Mínima, ou `null`); sem `steps`, a primeira lista das instruções é convertida em passos. `assigneeId` é opcional e deve corresponder a um membro local do projeto; em alternativa, `assigneeEmail` (nunca os dois) é resolvido pelo servidor para o membro do projeto com esse email, e a publicação é recusada se não existir. O criador da suite é sempre o autor verificado (`Integração: <nome da chave>`), nunca um valor enviado pelo cliente. Não envie estados/resultados: os testes começam pendentes.
 
 ```bash
 # Guarde estes valores no ambiente do processo ou no seu gestor de segredos.

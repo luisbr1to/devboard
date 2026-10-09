@@ -508,9 +508,17 @@ test("suite tests support filters, scoped activity, reordering and TipTap checkl
     suites[0],
     summarize(suites[0].tests!.map((test) => test.status)),
   );
+  suites[0].tests![1].priority = null;
   await page.setViewportSize({ width: 1100, height: 600 });
   await page.goto("/tests/browser/harness.html?screen=detail");
   await expect(page.locator(".summary-grid > .card")).toHaveCount(2);
+  // Priority comes right before the status, with "—" when there is none.
+  const headers = page.locator(".test-table thead th");
+  await expect(headers.nth(3)).toHaveText("Prioridade");
+  await expect(headers.nth(4)).toHaveText("Estado");
+  const priorities = page.locator(".test-table tbody .priority-column");
+  await expect(priorities.nth(0)).toHaveText("Crítica");
+  await expect(priorities.nth(1)).toHaveText("—");
   await expect(page.locator(".suite-tags .status-badge")).toHaveText(
     "Rejeitada",
   );

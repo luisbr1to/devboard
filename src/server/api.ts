@@ -597,7 +597,7 @@ async function newSuite(
     const testId = randomUUID();
     const { instructions, steps } = definition(test);
     await db.query(
-      "INSERT INTO tests(id,suite_id,number,title,instructions,expected_result,assignee_id,position) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",
+      "INSERT INTO tests(id,suite_id,number,title,instructions,expected_result,assignee_id,position,priority) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)",
       [
         testId,
         suiteId,
@@ -607,6 +607,7 @@ async function newSuite(
         test.expectedResult,
         assigneeId || null,
         position,
+        test.priority ?? null,
       ],
     );
     await insertSteps(db, testId, steps);
@@ -1474,6 +1475,7 @@ export function createApi(
             instructions: test.instructions,
             steps: test.steps.map((step) => step.body),
             expectedResult: test.expectedResult,
+            priority: test.priority,
             assigneeId:
               test.assigneeId && members.includes(test.assigneeId)
                 ? test.assigneeId
@@ -1625,7 +1627,7 @@ export function createApi(
       const { instructions, steps } = definition(input);
       const test = (
         await client.query(
-          "INSERT INTO tests(id,suite_id,number,title,instructions,expected_result,assignee_id,position) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *",
+          "INSERT INTO tests(id,suite_id,number,title,instructions,expected_result,assignee_id,position,priority) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *",
           [
             randomUUID(),
             suiteId,
@@ -1635,6 +1637,7 @@ export function createApi(
             input.expectedResult,
             input.assigneeId || null,
             position,
+            input.priority ?? null,
           ],
         )
       ).rows[0];
@@ -1719,7 +1722,7 @@ export function createApi(
       }
       const row = (
         await client.query(
-          "UPDATE tests SET title=$2,instructions=$3,expected_result=$4,assignee_id=$5,status=$6,position=$7,updated_at=clock_timestamp(),version=version+1 WHERE id=$1 RETURNING *",
+          "UPDATE tests SET title=$2,instructions=$3,expected_result=$4,assignee_id=$5,status=$6,position=$7,priority=$8,updated_at=clock_timestamp(),version=version+1 WHERE id=$1 RETURNING *",
           [
             test.id,
             input.title,
@@ -1730,16 +1733,17 @@ export function createApi(
               : input.assigneeId,
             changed ? "pending" : test.status,
             input.position ?? test.position,
+            input.priority === undefined ? test.priority : input.priority,
           ],
         )
       ).rows[0];
       const reassigned =
         input.assigneeId !== undefined && input.assigneeId !== test.assignee_id;
-      if (
-        changed ||
+      // A new title or priority is an edit, but never resets the result.
+      const retitled =
         test.title !== input.title ||
-        input.position !== undefined
-      ) {
+        (input.priority !== undefined && input.priority !== test.priority);
+      if (changed || retitled || input.position !== undefined) {
         const activityId = await event(
           client,
           suite.id,
@@ -1750,7 +1754,7 @@ export function createApi(
           { resetToPending: changed, previousStatus: test.status },
         );
         // Reordering alone is not worth a notification.
-        if (changed || test.title !== input.title)
+        if (changed || retitled)
           await notify(
             client,
             actor,

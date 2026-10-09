@@ -58,6 +58,7 @@ import {
   assignable,
 } from "./presentation";
 import { DefinitionForm, ResultForm, CommentForm } from "./forms";
+import { Priority } from "./issueUi";
 import { Pagination, pageSizes, usePageSize } from "./pagination";
 export function SuiteDetail({
   project,
@@ -592,6 +593,7 @@ export function SuiteDetail({
                       </th>
                       <th className="id-column">ID</th>
                       <th className="title-column">Teste</th>
+                      <th className="priority-column">Prioridade</th>
                       <th className="status-column">Estado</th>
                       <th className="assignee-column">Responsável</th>
                       <th className="testers-column">Testers</th>
@@ -725,6 +727,9 @@ export function SuiteDetail({
                                 {stepCount === 1 ? "passo" : "passos"}
                               </span>
                             )}
+                          </td>
+                          <td className="priority-column">
+                            <Priority value={test.priority} />
                           </td>
                           <td className="status-column">
                             <StatusBadge status={test.status} />
@@ -1105,6 +1110,12 @@ function TestPanel({
           <dt>Estado</dt>
           <dd className="test-meta">
             <StatusBadge status={test.status} />
+          </dd>
+        </div>
+        <div>
+          <dt>Prioridade</dt>
+          <dd>
+            <Priority value={test.priority} />
           </dd>
         </div>
         <div>

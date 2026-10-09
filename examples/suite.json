@@ -9,11 +9,13 @@
   "tests": [
     {
       "title": "Pagamento com cartão",
+      "priority": 1,
       "instructions": "1. Abrir o checkout.\n2. Introduzir um cartão de teste válido.\n3. Confirmar o pagamento.",
       "expectedResult": "O pedido é confirmado e o total corresponde ao valor do carrinho."
     },
     {
       "title": "Cartão recusado",
+      "priority": 2,
       "instructions": "Usar o cartão de teste recusado do ambiente de staging.",
       "steps": [
         "Introduzir um cartão de teste recusado.",

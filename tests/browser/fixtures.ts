@@ -53,6 +53,7 @@ export function fixtures(): Suite[] {
         testers: [],
         expectedResult: "A operação é confirmada sem erros.",
         assigneeId: members[0].id,
+        priority: index === 0 ? 1 : null,
         status: index === 0 ? "pending" : index === 1 ? "approved" : "revoked",
         position: 0,
         createdAt: project.createdAt,

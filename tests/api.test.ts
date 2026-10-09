@@ -696,6 +696,112 @@ test("invalid assignee rolls back the entire suite creation", async () => {
     1,
   );
 });
+test("test priority is optional, kept when omitted and never resets results", async () => {
+  const { project, suite } = await fixture();
+  assert.equal(suite.tests[0].priority, null);
+  const key = (
+    await call("post", `/projects/${project.id}/keys`, "owner", {
+      name: "Pipeline IA",
+    }).expect(201)
+  ).body;
+  const published = (
+    await call("post", `/projects/${project.id}/suites`, key.secret, {
+      title: "Release",
+      tests: [
+        { title: "Checkout", expectedResult: "Compra concluída", priority: 1 },
+        { title: "Rodapé", expectedResult: "Links corretos" },
+      ],
+    })
+      .set("Idempotency-Key", "priority-1")
+      .expect(201)
+  ).body;
+  assert.deepEqual(
+    published.tests.map((test: any) => test.priority),
+    [1, null],
+  );
+  for (const priority of [0, 6, 2.5, "1"])
+    await call("post", `/projects/${project.id}/suites`, key.secret, {
+      title: "Inválida",
+      tests: [{ title: "Teste", priority }],
+    })
+      .set("Idempotency-Key", `priority-invalid-${priority}`)
+      .expect(400);
+  const [test] = published.tests;
+  await call(
+    "post",
+    `/tests/${test.id}/result`,
+    "member",
+    { status: "approved" },
+    test.version,
+  ).expect(200);
+  const approved = (await call("get", `/suites/${published.id}`)).body.tests[0];
+  // Changing only the priority keeps the result and is recorded as an edit.
+  const edited = (
+    await call(
+      "patch",
+      `/tests/${test.id}`,
+      "member",
+      {
+        title: test.title,
+        instructions: test.instructions,
+        expectedResult: test.expectedResult,
+        priority: 3,
+      },
+      approved.version,
+    ).expect(200)
+  ).body;
+  assert.equal(edited.priority, 3);
+  assert.equal(edited.status, "approved");
+  const activity = (await call("get", `/suites/${published.id}/activity`)).body;
+  assert.ok(
+    activity.some(
+      (item: any) => item.kind === "test_edited" && item.testId === test.id,
+    ),
+  );
+  // Clients that do not send a priority (older ones, reordering) keep it.
+  const moved = (
+    await call(
+      "patch",
+      `/tests/${test.id}`,
+      "owner",
+      {
+        title: test.title,
+        instructions: test.instructions,
+        expectedResult: test.expectedResult,
+        position: 1,
+      },
+      edited.version,
+    ).expect(200)
+  ).body;
+  assert.equal(moved.priority, 3);
+  const cleared = (
+    await call(
+      "patch",
+      `/tests/${test.id}`,
+      "owner",
+      {
+        title: test.title,
+        instructions: test.instructions,
+        expectedResult: test.expectedResult,
+        priority: null,
+      },
+      moved.version,
+    ).expect(200)
+  ).body;
+  assert.equal(cleared.priority, null);
+  const copy = (
+    await call("post", `/suites/${published.id}/duplicate`, "owner").expect(201)
+  ).body;
+  assert.deepEqual(
+    copy.tests.map((test: any) => [test.title, test.priority]),
+    [
+      ["Rodapé", null],
+      ["Checkout", null],
+    ],
+  );
+  const openapi = (await call("get", "/openapi.json")).body;
+  assert.match(JSON.stringify(openapi), /"priority"/);
+});
 test("test reorder shifts neighbours and preserves QA results", async () => {
   const { suite } = await fixture();
   const first = suite.tests[0];

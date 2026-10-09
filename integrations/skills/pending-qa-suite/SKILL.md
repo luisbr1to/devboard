@@ -1,6 +1,6 @@
 ---
 name: pending-qa-suite
-description: Cria no DevBoard, através da API de publicação, uma suite de testes manuais para tudo o que está em master mas ainda não foi para produção (release pendente). A descrição da suite resume as alterações e destaca os pontos críticos; cada teste tem título, instruções, passos e resultado esperado, atribuído ao email git/GitLab de quem corre a skill (ou a --email=...). Ativar quando o utilizador disser "/pending-qa-suite", "cria a suite de QA da release", "suite de testes do que vai para produção", "preparar QA antes do deploy" ou similar.
+description: Cria no DevBoard, através da API de publicação, uma suite de testes manuais para tudo o que está em master mas ainda não foi para produção (release pendente). A descrição da suite resume as alterações e destaca os pontos críticos; cada teste tem título, prioridade, instruções, passos e resultado esperado, atribuído ao email git/GitLab de quem corre a skill (ou a --email=...). Ativar quando o utilizador disser "/pending-qa-suite", "cria a suite de QA da release", "suite de testes do que vai para produção", "preparar QA antes do deploy" ou similar.
 ---
 
 # pending-qa-suite
@@ -158,7 +158,8 @@ desconhecidos):
   },
   "tests": [
     {
-      "title": "[CRÍTICO] Checkout — finalizar compra com MB WAY (MR !123)",
+      "title": "Checkout — finalizar compra com MB WAY (MR !123)",
+      "priority": 1,
       "instructions": "…Markdown: contexto e pré-condições…",
       "steps": ["Passo 1", "Passo 2"],
       "expectedResult": "…resultado observável…",
@@ -168,7 +169,7 @@ desconhecidos):
 }
 ```
 
-Limites: título ≤ 200 caracteres; cada passo ≤ 2000; ≤ 100 passos por teste; ≤ 500
+Limites: título ≤ 200 caracteres; `priority` inteiro de 1 a 5 (ou `null`); cada passo ≤ 2000; ≤ 100 passos por teste; ≤ 500
 testes. Remover credenciais do URL do repositório (`https://user:token@…` → `https://…`).
 
 **Descrição da suite** (Markdown, curta e legível pelo gestor):
@@ -202,7 +203,18 @@ Se a tag não existir e for usado o fallback de 10 commits, indicar isso no Âmb
   As alterações ⚪ BAIXO podem ficar num único teste "Verificação visual geral".
 - Ordem: 🔴 CRÍTICO primeiro, depois 🟠 ALTO, 🟡 MÉDIO e ⚪ BAIXO (a ordem do array é a
   ordem na suite).
-- `title`: `[CRÍTICO|ALTO|MÉDIO|BAIXO] Área — ação a validar (MR !NNN)`.
+- `priority`: o nível do passo 5, na coluna Prioridade do DevBoard (antes do Estado):
+
+  | Nível | `priority` | Mostrado como |
+  |---|---|---|
+  | 🔴 CRÍTICO | `1` | Crítica |
+  | 🟠 ALTO | `2` | Alta |
+  | 🟡 MÉDIO | `3` | Média |
+  | ⚪ BAIXO | `4` | Baixa |
+
+  `5` (Mínima) não é usado por esta skill. Todos os testes levam `priority`.
+- `title`: `Área — ação a validar (MR !NNN)`, **sem** o nível entre parênteses retos: a
+  prioridade vai em `priority` e não no título.
 - `instructions` (Markdown, sem listas numeradas, porque os passos vão em `steps`):
   - **Contexto:** o que mudou, em linguagem simples, e o MR;
   - **Pré-condições:** ambiente (produção/staging), loja ou domínio quando há vários, tipo
@@ -232,7 +244,7 @@ mkdir -p "$OUT_DIR"
 - Caso contrário, escrever o JSON gerado em `$PAYLOAD`.
 
 Mostrar ao utilizador uma pré-visualização curta: título, responsável, número de testes
-por nível e os títulos dos críticos. Com `--dry-run`, mostrar também o JSON e parar.
+por prioridade e os títulos dos testes com prioridade 1 (Crítica). Com `--dry-run`, mostrar também o JSON e parar.
 Sem `--yes`, pedir confirmação antes de publicar, porque a suite notifica todos os
 membros do projeto.
 
@@ -258,7 +270,7 @@ Interpretar a resposta:
 |---|---|---|
 | 201 | Suite criada | Reportar (passo 9) |
 | 200 | Repetição: a suite já existia com este conteúdo | Reportar como a suite existente |
-| 400 | Dados inválidos ou responsável que não é membro | Mostrar `error`. Se for o email: pedir ao owner para adicionar a pessoa ao projeto, ou correr de novo com outro `--email`. Não retirar o responsável em silêncio. Um 400 por `assigneeEmail` desconhecido indica que o servidor DevBoard ainda não tem esta funcionalidade |
+| 400 | Dados inválidos ou responsável que não é membro | Mostrar `error`. Se for o email: pedir ao owner para adicionar a pessoa ao projeto, ou correr de novo com outro `--email`. Não retirar o responsável em silêncio. Um 400 por `assigneeEmail` ou `priority` desconhecido indica que o servidor DevBoard ainda não tem essa funcionalidade (a prioridade dos testes exige a migração `012_test_priority.sql`); não retirar a prioridade nem voltar a pô-la no título sem perguntar |
 | 401 | Chave inválida ou revogada | Pedir para criar/configurar uma chave nova |
 | 403 | A chave não pertence a este projeto | Verificar `TESTHUB_PROJECT_ID` |
 | 409 | Mesma `Idempotency-Key` com conteúdo diferente | Perguntar se deve criar uma suite nova (novo `IDEM`, ver passo 7) |
