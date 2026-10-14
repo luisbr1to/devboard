@@ -52,11 +52,18 @@ export const testInput = z
     assigneeId: z.string().uuid().nullable().optional(),
     /** Omitted on an edit, the current priority is kept. */
     priority: priority.optional(),
+    /** Project modules (as in Desenvolvimento). Omitted on an edit, the current ones are kept. */
+    moduleIds: z.array(z.string().uuid()).max(20).optional(),
   })
   .strict();
-/** Suite creation may assign by email; the server resolves it to a project member. */
+/** Module names: published tests may name modules; missing ones are created. */
+const moduleName = z.string().trim().min(1).max(60);
+/** Suite creation may assign by email and name modules; the server resolves both. */
 export const suiteTestInput = testInput
-  .extend({ assigneeEmail: z.string().trim().email().max(320).optional() })
+  .extend({
+    assigneeEmail: z.string().trim().email().max(320).optional(),
+    modules: z.array(moduleName).max(20).optional(),
+  })
   .refine((data) => !(data.assigneeEmail && data.assigneeId), {
     message: "Indique assigneeId ou assigneeEmail, não ambos.",
     path: ["assigneeEmail"],
@@ -385,6 +392,8 @@ export interface TestCase {
   expectedResult: string;
   assigneeId: string | null;
   priority: number | null;
+  /** Project modules, in the project's order. */
+  moduleIds: string[];
   status: Status;
   position: number;
   createdAt: string;

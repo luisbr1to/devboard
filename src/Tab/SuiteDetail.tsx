@@ -24,6 +24,8 @@ import type {
   Activity,
   Status,
   TestStep,
+  IssueConfig,
+  IssueTag,
 } from "../shared/contracts";
 import {
   Assignee,
@@ -60,8 +62,31 @@ import {
 } from "./presentation";
 import { DefinitionForm, ResultForm, CommentForm } from "./forms";
 import { CommentThread } from "./discussions";
-import { Priority } from "./issueUi";
+import { Priority, TagList } from "./issueUi";
+import { ColumnHeaders, ColumnMenu, useColumns } from "./columns";
 import { Pagination, pageSizes, usePageSize } from "./pagination";
+/** Columns of the test table; ID and Teste are fixed, the others can be hidden and moved. */
+const testColumns = [
+  { id: "id", label: "ID", fixed: true },
+  { id: "title", label: "Teste", fixed: true },
+  { id: "modules", label: "Módulos" },
+  { id: "priority", label: "Prioridade" },
+  { id: "status", label: "Estado" },
+  { id: "assignee", label: "Responsável" },
+  { id: "testers", label: "Testers" },
+  { id: "updated", label: "Atualizado" },
+] as const;
+type TestColumn = (typeof testColumns)[number]["id"];
+const columnClass: Record<TestColumn, string> = {
+  id: "id-column",
+  title: "title-column",
+  modules: "modules-column",
+  priority: "priority-column",
+  status: "status-column",
+  assignee: "assignee-column",
+  testers: "testers-column",
+  updated: "date-column",
+};
 export function SuiteDetail({
   project,
   suiteId,
@@ -93,6 +118,7 @@ export function SuiteDetail({
   const [testQuery, setTestQuery] = useState("");
   const [testStatus, setTestStatus] = useState<Status[]>([]);
   const [testAssignee, setTestAssignee] = useState("all");
+  const [testModule, setTestModule] = useState("all");
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [edit, setEdit] = useState<"suite" | "test" | null>(null);
   const [editTest, setEditTest] = useState<TestCase>();
@@ -122,6 +148,17 @@ export function SuiteDetail({
     detailsOpen ? `/suites/${suiteId}/activity` : null,
     revision,
   );
+  // Modules are the project's, managed with the issues in Definições → Desenvolvimento.
+  const modules =
+    useRemote<IssueConfig>(`/projects/${project.id}/issue-config`, revision)
+      .data?.modules || [];
+  const preferences = useRemote<Record<string, unknown>>("/me/preferences", 0);
+  const layout = useColumns<TestColumn>(
+    "tests.columns",
+    testColumns,
+    testColumns.map((column) => column.id),
+    preferences.data,
+  );
   const suite = remote.data;
   const tests = suite?.tests || [];
   const selected = tests.find((test) => test.id === selectedId);
@@ -135,7 +172,11 @@ export function SuiteDetail({
       (testAssignee === "all" ||
         (testAssignee === "unassigned"
           ? !test.assigneeId
-          : test.assigneeId === testAssignee)),
+          : test.assigneeId === testAssignee)) &&
+      (testModule === "all" ||
+        (testModule === "none"
+          ? !test.moduleIds.length
+          : test.moduleIds.includes(testModule))),
   );
   const testPageCount = Math.max(
     1,
@@ -151,7 +192,55 @@ export function SuiteDetail({
   }, [testPageCount]);
   useEffect(() => {
     setTestPage(1);
-  }, [testQuery, testStatus, testAssignee]);
+  }, [testQuery, testStatus, testAssignee, testModule]);
+  const cell = (test: TestCase, column: TestColumn) => {
+    switch (column) {
+      case "id":
+        return testKey(test.number);
+      case "title": {
+        const stepCount = test.steps.length;
+        return (
+          <>
+            <strong className="row-title">{test.title}</strong>
+            {/* Steps and discussions on their own line, so the title wraps alone. */}
+            {(stepCount > 0 || test.discussions.total > 0) && (
+              <span className="row-details">
+                {stepCount > 0 && (
+                  <span className="row-meta">
+                    {stepCount} {stepCount === 1 ? "passo" : "passos"}
+                  </span>
+                )}
+                <DiscussionCount counts={test.discussions} />
+              </span>
+            )}
+          </>
+        );
+      }
+      case "modules":
+        return <TagList ids={test.moduleIds} items={modules} />;
+      case "priority":
+        return <Priority value={test.priority} />;
+      case "status":
+        return <StatusBadge status={test.status} />;
+      case "assignee":
+        return (
+          <Assignee
+            projectId={project.id}
+            member={members.find((member) => member.id === test.assigneeId)}
+          />
+        );
+      case "testers":
+        return (
+          <AvatarStack
+            projectId={project.id}
+            people={test.testers}
+            members={members}
+          />
+        );
+      case "updated":
+        return shortDate(test.updatedAt);
+    }
+  };
   const title = suite?.title;
   useEffect(() => {
     if (title) onLoaded?.(title);
@@ -574,6 +663,24 @@ export function SuiteDetail({
                     })),
                   ]}
                 />
+                {modules.length > 0 && (
+                  <FilterMenu
+                    name="testModule"
+                    label="Módulo"
+                    ariaLabel="Filtrar testes por módulo"
+                    value={testModule}
+                    onChange={setTestModule}
+                    options={[
+                      { value: "all", label: "Todos" },
+                      { value: "none", label: "Sem módulo" },
+                      ...modules.map((item) => ({
+                        value: item.id,
+                        label: item.name,
+                      })),
+                    ]}
+                  />
+                )}
+                <ColumnMenu layout={layout} />
               </>
             )}
             <Button
@@ -603,13 +710,10 @@ export function SuiteDetail({
                       <th className="drag-column">
                         <span className="visually-hidden">Reordenar</span>
                       </th>
-                      <th className="id-column">ID</th>
-                      <th className="title-column">Teste</th>
-                      <th className="priority-column">Prioridade</th>
-                      <th className="status-column">Estado</th>
-                      <th className="assignee-column">Responsável</th>
-                      <th className="testers-column">Testers</th>
-                      <th className="date-column">Atualizado</th>
+                      <ColumnHeaders
+                        layout={layout}
+                        className={(id) => columnClass[id]}
+                      />
                       <th className="action-column">
                         <span className="visually-hidden">Ações</span>
                       </th>
@@ -627,7 +731,6 @@ export function SuiteDetail({
                   >
                     {visibleTests.map((test) => {
                       const index = indexOf(test.id);
-                      const stepCount = test.steps.length;
                       return (
                         <tr
                           key={test.id}
@@ -727,44 +830,14 @@ export function SuiteDetail({
                               </svg>
                             </button>
                           </td>
-                          <td className="id-column mono">
-                            {testKey(test.number)}
-                          </td>
-                          <td className="title-column">
-                            <strong className="row-title">{test.title}</strong>
-                            {stepCount > 0 && (
-                              <span className="row-meta">
-                                {" "}
-                                · {stepCount}{" "}
-                                {stepCount === 1 ? "passo" : "passos"}
-                              </span>
-                            )}
-                            <DiscussionCount counts={test.discussions} />
-                          </td>
-                          <td className="priority-column">
-                            <Priority value={test.priority} />
-                          </td>
-                          <td className="status-column">
-                            <StatusBadge status={test.status} />
-                          </td>
-                          <td className="assignee-column">
-                            <Assignee
-                              projectId={project.id}
-                              member={members.find(
-                                (member) => member.id === test.assigneeId,
-                              )}
-                            />
-                          </td>
-                          <td className="testers-column">
-                            <AvatarStack
-                              projectId={project.id}
-                              people={test.testers}
-                              members={members}
-                            />
-                          </td>
-                          <td className="mono date-column">
-                            {shortDate(test.updatedAt)}
-                          </td>
+                          {layout.visible.map((column) => (
+                            <td
+                              key={column.id}
+                              className={`${columnClass[column.id]}${column.id === "id" || column.id === "updated" ? " mono" : ""}`}
+                            >
+                              {cell(test, column.id)}
+                            </td>
+                          ))}
                           <td className="action-column">
                             <div
                               className="row-actions"
@@ -1014,6 +1087,7 @@ export function SuiteDetail({
             suite={suite}
             project={project}
             members={members}
+            modules={modules}
             readOnly={readOnly}
             onSaved={refresh}
             activity={
@@ -1061,6 +1135,7 @@ export function SuiteDetail({
           suite={suite}
           test={editTest}
           members={assignable(members)}
+          modules={modules}
           onSaved={refresh}
           onClose={() => {
             setEdit(null);
@@ -1098,6 +1173,7 @@ function TestPanel({
   suite,
   project,
   members,
+  modules,
   readOnly,
   onSaved,
   activity,
@@ -1106,6 +1182,7 @@ function TestPanel({
   suite: Suite;
   project: Project;
   members: Member[];
+  modules: IssueTag[];
   readOnly: boolean;
   onSaved(): void;
   activity: ReactNode;
@@ -1150,6 +1227,12 @@ function TestPanel({
           <dt>Prioridade</dt>
           <dd>
             <Priority value={test.priority} />
+          </dd>
+        </div>
+        <div>
+          <dt>Módulos</dt>
+          <dd>
+            <TagList ids={test.moduleIds} items={modules} />
           </dd>
         </div>
         <div>

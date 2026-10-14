@@ -1,6 +1,6 @@
 ---
 name: pending-qa-suite
-description: Cria no DevBoard, através da API de publicação, uma suite de testes manuais para tudo o que está em master mas ainda não foi para produção (release pendente). A descrição da suite resume as alterações e destaca os pontos críticos; cada teste tem título, prioridade, instruções, passos e resultado esperado, atribuído ao email git/GitLab de quem corre a skill (ou a --email=...). Ativar quando o utilizador disser "/pending-qa-suite", "cria a suite de QA da release", "suite de testes do que vai para produção", "preparar QA antes do deploy" ou similar.
+description: Cria no DevBoard, através da API de publicação, uma suite de testes manuais para tudo o que está em master mas ainda não foi para produção (release pendente). A descrição da suite resume as alterações e destaca os pontos críticos; cada teste tem título, prioridade, módulos, instruções, passos e resultado esperado, atribuído ao email git/GitLab de quem corre a skill (ou a --email=...). Ativar quando o utilizador disser "/pending-qa-suite", "cria a suite de QA da release", "suite de testes do que vai para produção", "preparar QA antes do deploy" ou similar.
 ---
 
 # pending-qa-suite
@@ -160,6 +160,7 @@ desconhecidos):
     {
       "title": "Checkout — finalizar compra com MB WAY (MR !123)",
       "priority": 1,
+      "modules": ["Carrinho / Checkout", "Pagamentos"],
       "instructions": "…Markdown: contexto e pré-condições…",
       "steps": ["Passo 1", "Passo 2"],
       "expectedResult": "…resultado observável…",
@@ -169,8 +170,8 @@ desconhecidos):
 }
 ```
 
-Limites: título ≤ 200 caracteres; `priority` inteiro de 1 a 5 (ou `null`); cada passo ≤ 2000; ≤ 100 passos por teste; ≤ 500
-testes. Remover credenciais do URL do repositório (`https://user:token@…` → `https://…`).
+Limites: título ≤ 200 caracteres; `priority` inteiro de 1 a 5 (ou `null`); `modules` até 20
+nomes de ≤ 60 caracteres; cada passo ≤ 2000; ≤ 100 passos por teste; ≤ 500 testes. Remover credenciais do URL do repositório (`https://user:token@…` → `https://…`).
 
 **Descrição da suite** (Markdown, curta e legível pelo gestor):
 
@@ -213,6 +214,16 @@ Se a tag não existir e for usado o fallback de 10 commits, indicar isso no Âmb
   | ⚪ BAIXO | `4` | Baixa |
 
   `5` (Mínima) não é usado por esta skill. Todos os testes levam `priority`.
+- `modules`: a área ou áreas do passo 5 que o teste cobre (normalmente uma ou duas), para
+  a equipa filtrar e categorizar os testes na coluna Módulos do DevBoard. São os módulos
+  do projeto (os mesmos dos issues, em Definições → Desenvolvimento):
+  - o servidor associa cada nome a um módulo existente ignorando maiúsculas e acentos
+    (`checkout` = `Checkout`) e **cria** os que ainda não existem;
+  - por isso usar sempre a mesma grafia, curta e estável, de release para release (a
+    coluna Área da tabela, ex.: `Carrinho / Checkout`, `Pagamentos`, `Backoffice /
+    Permissões`), e nunca nomes com MR, datas ou o nível;
+  - se o utilizador indicar os nomes dos módulos do projeto, preferi-los aos da tabela;
+  - a "Verificação visual geral" leva `["Geral"]`. Todos os testes levam `modules`.
 - `title`: `Área — ação a validar (MR !NNN)`, **sem** o nível entre parênteses retos: a
   prioridade vai em `priority` e não no título.
 - `instructions` (Markdown, sem listas numeradas, porque os passos vão em `steps`):
@@ -244,7 +255,7 @@ mkdir -p "$OUT_DIR"
 - Caso contrário, escrever o JSON gerado em `$PAYLOAD`.
 
 Mostrar ao utilizador uma pré-visualização curta: título, responsável, número de testes
-por prioridade e os títulos dos testes com prioridade 1 (Crítica). Com `--dry-run`, mostrar também o JSON e parar.
+por prioridade e por módulo e os títulos dos testes com prioridade 1 (Crítica). Com `--dry-run`, mostrar também o JSON e parar.
 Sem `--yes`, pedir confirmação antes de publicar, porque a suite notifica todos os
 membros do projeto.
 
@@ -270,7 +281,7 @@ Interpretar a resposta:
 |---|---|---|
 | 201 | Suite criada | Reportar (passo 9) |
 | 200 | Repetição: a suite já existia com este conteúdo | Reportar como a suite existente |
-| 400 | Dados inválidos ou responsável que não é membro | Mostrar `error`. Se for o email: pedir ao owner para adicionar a pessoa ao projeto, ou correr de novo com outro `--email`. Não retirar o responsável em silêncio. Um 400 por `assigneeEmail` ou `priority` desconhecido indica que o servidor DevBoard ainda não tem essa funcionalidade (a prioridade dos testes exige a migração `012_test_priority.sql`); não retirar a prioridade nem voltar a pô-la no título sem perguntar |
+| 400 | Dados inválidos ou responsável que não é membro | Mostrar `error`. Se for o email: pedir ao owner para adicionar a pessoa ao projeto, ou correr de novo com outro `--email`. Não retirar o responsável em silêncio. Um 400 por `assigneeEmail`, `priority` ou `modules` desconhecido indica que o servidor DevBoard ainda não tem essa funcionalidade (a prioridade dos testes exige a migração `012_test_priority.sql` e os módulos a `015_test_modules.sql`); não retirar a prioridade ou os módulos nem pô-los no título sem perguntar |
 | 401 | Chave inválida ou revogada | Pedir para criar/configurar uma chave nova |
 | 403 | A chave não pertence a este projeto | Verificar `TESTHUB_PROJECT_ID` |
 | 409 | Mesma `Idempotency-Key` com conteúdo diferente | Perguntar se deve criar uma suite nova (novo `IDEM`, ver passo 7) |
@@ -279,7 +290,8 @@ Interpretar a resposta:
 
 Da resposta JSON usar `id`, `number` e `title`. Responder com:
 - link: `${TESTHUB_URL%/}/tabs/home/#project=$PROJECT&suite=<id>`;
-- título, número de testes e responsável;
+- título, número de testes, responsável e módulos usados (os que não existiam foram
+  criados no projeto e podem ser revistos em Definições → Desenvolvimento);
 - a lista dos pontos críticos (os mesmos da descrição);
 - o caminho de `$PAYLOAD`, para retries.
 

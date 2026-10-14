@@ -15,6 +15,7 @@
 | M9 — Desenvolvimento       | Issues com tabela/board, estados/módulos/labels por projeto, reporter fixo e vários responsáveis | Implementado; validado localmente             |
 | M10 — Importação de issues | Assistente .xlsx/.csv com associação de pessoas e valores, idempotente e sem notificações      | Implementado; validado localmente             |
 | M11 — Discussões           | Discussões ao estilo GitLab em testes e issues: respostas, resolver/reabrir, contador nas rows e edição pelo autor | Implementado; validado localmente             |
+| M12 — Módulos nos testes   | Testes categorizados com os módulos do projeto, coluna e filtro, colunas configuráveis por pessoa | Implementado; validado localmente             |
 
 ## Sequência de ativação
 

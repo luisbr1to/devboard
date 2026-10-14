@@ -61,7 +61,6 @@ import {
   dayText,
   defaultColumns,
   estimateText,
-  fixedColumns,
   issueColumns,
   priorityLabels,
   statusOf,
@@ -71,6 +70,7 @@ import { IssueBoard } from "./IssueBoard";
 import { IssueForm } from "./IssueForm";
 import { IssuePanel } from "./IssuePanel";
 import { Pagination, usePageSize } from "./pagination";
+import { ColumnHeaders, ColumnMenu, useColumns } from "./columns";
 
 // The spreadsheet parsers are only downloaded when an owner opens the import.
 const IssueImport = lazy(() =>
@@ -97,7 +97,6 @@ export function IssueList({
 }) {
   const [archive, setArchive] = useState<"active" | "archived">("active");
   const [view, setView] = useState<View>();
-  const [columns, setColumns] = useState<IssueColumn[]>();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<string[]>([]);
   const [module, setModule] = useState("all");
@@ -132,39 +131,12 @@ export function IssueList({
   const activeView: View =
     view ?? (preferences.data?.["issues.view"] === "board" ? "board" : "table");
   /** Visible columns in the user's order; ID and Issue always come first. */
-  const activeColumns = useMemo(() => {
-    const saved = columns ?? preferences.data?.["issues.columns"];
-    const known = new Set(issueColumns.map((column) => column.id as string));
-    const list =
-      Array.isArray(saved) && saved.length
-        ? (saved.filter((id) => known.has(id)) as IssueColumn[])
-        : defaultColumns;
-    return [
-      ...fixedColumns,
-      ...list.filter((id) => !fixedColumns.includes(id)),
-    ] as IssueColumn[];
-  }, [columns, preferences.data]);
-  const [draggedColumn, setDraggedColumn] = useState<IssueColumn>();
-  const [columnTarget, setColumnTarget] = useState<{
-    id: IssueColumn;
-    after: boolean;
-  }>();
-  const saveColumns = (next: IssueColumn[]) => {
-    setColumns(next);
-    remember("issues.columns", next);
-  };
-  /** Moves `id` next to `target` (before or after it); fixed columns never move. */
-  const moveColumn = (id: IssueColumn, target: IssueColumn, after: boolean) => {
-    if (id === target || fixedColumns.includes(id)) return;
-    const rest = activeColumns.filter(
-      (column) => column !== id && !fixedColumns.includes(column),
-    );
-    const index = fixedColumns.includes(target)
-      ? 0
-      : rest.indexOf(target) + (after ? 1 : 0);
-    rest.splice(index, 0, id);
-    saveColumns([...fixedColumns, ...rest]);
-  };
+  const layout = useColumns<IssueColumn>(
+    "issues.columns",
+    issueColumns,
+    defaultColumns,
+    preferences.data,
+  );
   const remember = (key: string, value: unknown) =>
     void api(`/me/preferences/${key}`, "PUT", { value }).catch(() => undefined);
   const config = useRemote<IssueConfig>(
@@ -519,9 +491,6 @@ export function IssueList({
         return shortDate(issue.updatedAt);
     }
   };
-  const visibleColumns = activeColumns.map((id) =>
-    issueColumns.find((column) => column.id === id)!,
-  );
   return (
     <>
       <div className="page-heading">
@@ -758,45 +727,7 @@ export function IssueList({
                   { value: "title", label: "Título (A–Z)" },
                 ]}
               />
-              <Menu
-                positioning="below-end"
-                checkedValues={{ columns: activeColumns }}
-                onCheckedValueChange={(_, data) => {
-                  // Keep the current order; newly shown columns go to the end.
-                  const kept = activeColumns.filter(
-                    (id) =>
-                      fixedColumns.includes(id) ||
-                      data.checkedItems.includes(id),
-                  );
-                  const added = issueColumns
-                    .map((column) => column.id)
-                    .filter(
-                      (id) =>
-                        data.checkedItems.includes(id) && !kept.includes(id),
-                    );
-                  saveColumns([...kept, ...added]);
-                }}
-              >
-                <MenuTrigger disableButtonEnhancement>
-                  <Button size="sm" icon={<ViewColumnsIcon />}>
-                    Colunas
-                  </Button>
-                </MenuTrigger>
-                <MenuPopover>
-                  <MenuList>
-                    {issueColumns.map((column) => (
-                      <MenuItemCheckbox
-                        key={column.id}
-                        name="columns"
-                        value={column.id}
-                        disabled={"fixed" in column && column.fixed}
-                      >
-                        {column.label}
-                      </MenuItemCheckbox>
-                    ))}
-                  </MenuList>
-                </MenuPopover>
-              </Menu>
+              <ColumnMenu layout={layout} />
             </>
           )}
         </div>
@@ -957,91 +888,10 @@ export function IssueList({
                       />
                     </th>
                   )}
-                  {visibleColumns.map((column, index) => {
-                    const fixed = fixedColumns.includes(column.id);
-                    const target =
-                      columnTarget?.id === column.id ? columnTarget : undefined;
-                    return (
-                      <th
-                        key={column.id}
-                        className={[
-                          `issue-col-${column.id}`,
-                          !fixed && "movable-column",
-                          draggedColumn === column.id && "dragging",
-                          target &&
-                            (target.after ? "drop-after" : "drop-before"),
-                        ]
-                          .filter(Boolean)
-                          .join(" ")}
-                        draggable={!fixed}
-                        onDragStart={(event) => {
-                          event.dataTransfer.effectAllowed = "move";
-                          event.dataTransfer.setData("text/plain", column.id);
-                          setDraggedColumn(column.id);
-                        }}
-                        onDragOver={(event) => {
-                          if (!draggedColumn || fixed) return;
-                          event.preventDefault();
-                          const rect =
-                            event.currentTarget.getBoundingClientRect();
-                          const after =
-                            event.clientX > rect.left + rect.width / 2;
-                          if (
-                            columnTarget?.id !== column.id ||
-                            columnTarget.after !== after
-                          )
-                            setColumnTarget({ id: column.id, after });
-                        }}
-                        onDragLeave={() => setColumnTarget(undefined)}
-                        onDrop={(event) => {
-                          event.preventDefault();
-                          if (draggedColumn && target)
-                            moveColumn(draggedColumn, column.id, target.after);
-                          setDraggedColumn(undefined);
-                          setColumnTarget(undefined);
-                        }}
-                        onDragEnd={() => {
-                          setDraggedColumn(undefined);
-                          setColumnTarget(undefined);
-                        }}
-                      >
-                        {fixed ? (
-                          column.label
-                        ) : (
-                          <button
-                            type="button"
-                            className="column-handle"
-                            title="Arraste para reordenar (Alt+← / Alt+→)"
-                            aria-label={`Coluna ${column.label}: Alt+seta para a esquerda ou direita para mover`}
-                            onKeyDown={(event) => {
-                              if (
-                                !event.altKey ||
-                                (event.key !== "ArrowLeft" &&
-                                  event.key !== "ArrowRight")
-                              )
-                                return;
-                              event.preventDefault();
-                              const neighbour =
-                                visibleColumns[
-                                  index + (event.key === "ArrowLeft" ? -1 : 1)
-                                ];
-                              if (
-                                neighbour &&
-                                !fixedColumns.includes(neighbour.id)
-                              )
-                                moveColumn(
-                                  column.id,
-                                  neighbour.id,
-                                  event.key === "ArrowRight",
-                                );
-                            }}
-                          >
-                            {column.label}
-                          </button>
-                        )}
-                      </th>
-                    );
-                  })}
+                  <ColumnHeaders
+                    layout={layout}
+                    className={(id) => `issue-col-${id}`}
+                  />
                   <th className="action-column">
                     <span className="visually-hidden">Ações</span>
                   </th>
@@ -1078,7 +928,7 @@ export function IssueList({
                         />
                       </td>
                     )}
-                    {visibleColumns.map((column) => (
+                    {layout.visible.map((column) => (
                       <td
                         key={column.id}
                         className={`issue-col-${column.id}${column.id === "id" ? " id-column mono" : ""}${["reported", "updated", "deployed", "estimate"].includes(column.id) ? " mono" : ""}`}

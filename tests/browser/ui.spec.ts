@@ -5,6 +5,8 @@ async function mockApi(page: Page) {
   const suites = fixtures();
   let activities: Activity[] = [];
   const posted: { path: string; data: any }[] = [];
+  const modules: { id: string; name: string; color: string }[] = [];
+  const preferences: Record<string, unknown> = {};
   await page.route("**/api/v1/**", async (route) => {
     const req = route.request();
     const url = new URL(req.url());
@@ -20,6 +22,13 @@ async function mockApi(page: Page) {
     if (path.endsWith("/photo")) {
       await route.fulfill({ status: 204 });
       return;
+    } else if (path.endsWith("/issue-config")) {
+      result = { statuses: [], modules, labels: [] };
+    } else if (path === "/me/preferences") {
+      result = preferences;
+    } else if (path.startsWith("/me/preferences/")) {
+      preferences[path.split("/").at(-1)!] = data.value;
+      result = {};
     } else if (path.endsWith("/summary")) {
       const active = suites.filter((suite) => !suite.archivedAt);
       const counts = { pending: 0, approved: 0, revoked: 0 };
@@ -101,6 +110,16 @@ async function mockApi(page: Page) {
           error:
             "Este registo foi alterado por outra pessoa. Atualize os dados antes de guardar.",
         };
+      } else if (data.position === undefined) {
+        // Saved from the test form.
+        posted.push({ path, data });
+        Object.assign(target, {
+          title: data.title,
+          priority: data.priority,
+          moduleIds: data.moduleIds,
+          version: target.version + 1,
+        });
+        result = target;
       } else {
         const from = parent.tests!.indexOf(target);
         const to = data.position;
@@ -211,7 +230,7 @@ async function mockApi(page: Page) {
       body: JSON.stringify(result),
     });
   });
-  return { suites, activities, posted };
+  return { suites, activities, posted, modules, preferences };
 }
 test("Portuguese suite list, clickable rows, archive and restore keep results", async ({
   page,
@@ -546,10 +565,11 @@ test("suite tests support filters, scoped activity, reordering and TipTap checkl
   await page.setViewportSize({ width: 1100, height: 600 });
   await page.goto("/tests/browser/harness.html?screen=detail");
   await expect(page.locator(".summary-grid > .card")).toHaveCount(2);
-  // Priority comes right before the status, with "—" when there is none.
+  // Modules and priority come right before the status, with "—" when empty.
   const headers = page.locator(".test-table thead th");
-  await expect(headers.nth(3)).toHaveText("Prioridade");
-  await expect(headers.nth(4)).toHaveText("Estado");
+  await expect(headers.nth(3)).toHaveText("Módulos");
+  await expect(headers.nth(4)).toHaveText("Prioridade");
+  await expect(headers.nth(5)).toHaveText("Estado");
   const priorities = page.locator(".test-table tbody .priority-column");
   await expect(priorities.nth(0)).toHaveText("Crítica");
   await expect(priorities.nth(1)).toHaveText("—");
@@ -1664,7 +1684,9 @@ test("comments can start GitLab-style discussions that are replied to and resolv
     .getByRole("button", { name: "Mostrar discussão (1 resposta)" })
     .click();
   await expect(notes).toHaveCount(2);
-  await expect(thread.getByRole("button", { name: "Responder…" })).toBeVisible();
+  await expect(
+    thread.getByRole("button", { name: "Responder…" }),
+  ).toBeVisible();
   await thread.getByRole("button", { name: "Reabrir discussão" }).click();
   await expect(
     thread.getByRole("button", { name: "Resolver discussão" }),
@@ -1683,4 +1705,111 @@ test("comments can start GitLab-style discussions that are replied to and resolv
     "Outro comentário",
   );
   await expect(thread.locator(".discussion-notes")).toHaveCount(0);
+});
+
+test("the test table shows modules in a column that can be hidden, moved and filtered", async ({
+  page,
+}) => {
+  const { suites, posted, modules, preferences } = await mockApi(page);
+  modules.push(
+    {
+      id: "70000000-0000-4000-8000-000000000001",
+      name: "Checkout",
+      color: "blue",
+    },
+    {
+      id: "70000000-0000-4000-8000-000000000002",
+      name: "Pagamentos",
+      color: "green",
+    },
+  );
+  const [checkout, payments] = modules;
+  suites[0].tests!.push({
+    ...suites[0].tests![0],
+    id: "10000000-0000-4000-8000-000000000009",
+    number: 2,
+    title: "Pagar com MB WAY",
+    position: 1,
+    moduleIds: [payments.id],
+  });
+  suites[0].tests![0].moduleIds = [checkout.id, payments.id];
+  await page.goto("/tests/browser/harness.html?screen=detail");
+  const headers = () =>
+    page
+      .locator(".test-table thead th:not(.drag-column):not(.action-column)")
+      .allInnerTexts();
+  await expect
+    .poll(headers)
+    .toEqual([
+      "ID",
+      "Teste",
+      "Módulos",
+      "Prioridade",
+      "Estado",
+      "Responsável",
+      "Testers",
+      "Atualizado",
+    ]);
+  const first = page
+    .getByRole("row")
+    .filter({ hasText: "Validar fluxo principal" });
+  await expect(first.locator(".modules-column")).toHaveText(
+    "CheckoutPagamentos",
+  );
+  // Filter by module, including tests without any.
+  await page.getByRole("button", { name: "Filtrar testes por módulo" }).click();
+  await page.getByRole("menuitemradio", { name: "Checkout" }).click();
+  await expect(page.locator(".test-table tbody tr")).toHaveCount(1);
+  await page.getByRole("button", { name: "Filtrar testes por módulo" }).click();
+  await page.getByRole("menuitemradio", { name: "Todos" }).click();
+  await expect(page.locator(".test-table tbody tr")).toHaveCount(2);
+  // Alt+→ moves the column, and the order is saved for this person.
+  await page
+    .getByRole("button", { name: /^Coluna Módulos/ })
+    .press("Alt+ArrowRight");
+  await expect
+    .poll(headers)
+    .toEqual([
+      "ID",
+      "Teste",
+      "Prioridade",
+      "Módulos",
+      "Estado",
+      "Responsável",
+      "Testers",
+      "Atualizado",
+    ]);
+  await expect
+    .poll(() => preferences["tests.columns"])
+    .toEqual([
+      "id",
+      "title",
+      "priority",
+      "modules",
+      "status",
+      "assignee",
+      "testers",
+      "updated",
+    ]);
+  // Hidden from the Colunas menu.
+  await page.getByRole("button", { name: "Colunas" }).click();
+  await page.getByRole("menuitemcheckbox", { name: "Módulos" }).click();
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".test-table .modules-column")).toHaveCount(0);
+  // The test panel lists the modules and the form changes them.
+  await first.click();
+  const dialog = page.getByRole("dialog", { name: "Validar fluxo principal" });
+  await expect(dialog.locator(".test-meta-list")).toContainText(
+    "CheckoutPagamentos",
+  );
+  await page.keyboard.press("Escape");
+  await first
+    .getByRole("button", { name: "Ações de Validar fluxo principal" })
+    .click();
+  await page.getByRole("menuitem", { name: "Editar" }).click();
+  const form = page.getByRole("dialog", { name: "Editar teste" });
+  await form.getByRole("button", { name: "Remover Checkout" }).click();
+  await form.getByRole("button", { name: "Guardar" }).click();
+  await expect.poll(() => posted.length).toBe(1);
+  expect(posted[0].data.moduleIds).toEqual([payments.id]);
 });

@@ -147,8 +147,6 @@ export const issueColumns = [
   { id: "updated", label: "Atualizado" },
 ] as const;
 export type IssueColumn = (typeof issueColumns)[number]["id"];
-/** Always visible, always first; the other columns can be hidden and reordered. */
-export const fixedColumns: IssueColumn[] = ["id", "title"];
 export const defaultColumns: IssueColumn[] = [
   "id",
   "title",

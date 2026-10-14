@@ -20,9 +20,11 @@ import type {
   Suite,
   Project,
   Status,
+  IssueTag,
 } from "../shared/contracts";
 import { statusLabels } from "../shared/contracts";
-import { priorityLabels } from "./issueUi";
+import { priorityLabels, tagOptions } from "./issueUi";
+import { Select2 } from "./Select2";
 import {
   Button,
   IconButton,
@@ -54,6 +56,7 @@ export function DefinitionForm({
   project,
   test,
   members = [],
+  modules = [],
   onSaved,
   onClose,
 }: {
@@ -63,6 +66,8 @@ export function DefinitionForm({
   project?: Project;
   test?: TestCase;
   members?: Member[];
+  /** Project modules a test can be categorized with. */
+  modules?: IssueTag[];
   onSaved(id?: string): void;
   onClose(): void;
 }) {
@@ -95,6 +100,7 @@ export function DefinitionForm({
   const [expected, setExpected] = useState(test?.expectedResult || "");
   const [assignee, setAssignee] = useState(test?.assigneeId || "");
   const [priority, setPriority] = useState(test?.priority ?? null);
+  const [moduleIds, setModuleIds] = useState(test?.moduleIds ?? []);
   const [icon, setIcon] = useState<string | null>(project?.icon || null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -155,6 +161,7 @@ export function DefinitionForm({
                   expectedResult: expected,
                   assigneeId: assignee || null,
                   priority,
+                  moduleIds,
                 },
                 openedVersion,
               );
@@ -245,6 +252,19 @@ export function DefinitionForm({
                 ))}
               </select>
             </label>
+            <div className="field">
+              <Select2
+                multiple
+                showLabel
+                label="Módulos"
+                placeholder={
+                  modules.length ? "Adicionar…" : "Configure nas Definições"
+                }
+                value={moduleIds}
+                options={tagOptions(modules)}
+                onChange={setModuleIds}
+              />
+            </div>
             <label className="field">
               Responsável
               <select

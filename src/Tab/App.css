@@ -1142,8 +1142,27 @@ input[type="checkbox"] {
 .test-table .title-column {
   min-width: 180px;
 }
+.test-table .row-title {
+  display: block;
+}
+.test-table .row-details {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--space-2);
+  margin-top: 4px;
+}
+.test-table .row-details .row-meta {
+  white-space: nowrap;
+}
+.test-table .row-details .discussion-count {
+  margin: 0;
+}
 .test-table .priority-column {
   white-space: nowrap;
+}
+.test-table .modules-column {
+  min-width: 120px;
 }
 @container (max-width: 1040px) {
   .suite-table .creator-column {
@@ -1241,6 +1260,7 @@ input[type="checkbox"] {
     grid-template-areas:
       "drag id priority status action"
       "drag title title title title"
+      "drag modules modules modules modules"
       "drag assignee assignee assignee testers";
     padding-left: var(--space-2);
   }
@@ -1281,6 +1301,13 @@ input[type="checkbox"] {
   }
   .test-table .assignee-column {
     grid-area: assignee;
+  }
+  .test-table .modules-column {
+    grid-area: modules;
+  }
+  /* An empty module list takes no row in the card. */
+  .test-table .modules-column:has(> .muted) {
+    display: none;
   }
   .test-table .testers-column {
     display: block;
@@ -3072,16 +3099,16 @@ input[type="checkbox"] {
   white-space: nowrap;
 }
 /* Reorderable headers: drag horizontally or Alt+arrows on the focused header. */
-.issue-table th.movable-column {
+.data-table th.movable-column {
   cursor: grab;
 }
-.issue-table th.dragging {
+.data-table th.dragging {
   opacity: 0.5;
 }
-.issue-table th.drop-before {
+.data-table th.drop-before {
   box-shadow: inset 3px 0 0 var(--accent);
 }
-.issue-table th.drop-after {
+.data-table th.drop-after {
   box-shadow: inset -3px 0 0 var(--accent);
 }
 .column-handle {
@@ -3099,10 +3126,10 @@ input[type="checkbox"] {
   border-radius: 2px;
 }
 @media (forced-colors: active) {
-  .issue-table th.drop-before {
+  .data-table th.drop-before {
     border-left: 3px solid Highlight;
   }
-  .issue-table th.drop-after {
+  .data-table th.drop-after {
     border-right: 3px solid Highlight;
   }
 }

@@ -3203,6 +3203,25 @@ test("comments: only the author edits them, newly mentioned people are notified"
   ).body.id;
   const issuePath = `/issues/${issue.id}/comments/${issueComment}`;
   await call("patch", issuePath, "owner", { body: "Firefox" }).expect(403);
+  // With an attachment, the text can be emptied.
+  const file = (
+    await request(app)
+      .post(`/api/v1/issues/${issue.id}/attachments`)
+      .set("Authorization", "Bearer member")
+      .set("Content-Type", "application/octet-stream")
+      .set("X-File-Name", "erro.txt")
+      .send(Buffer.from("stack trace"))
+      .expect(201)
+  ).body;
+  const withFile = (
+    await call("post", `/issues/${issue.id}/comments`, "member", {
+      body: "Ver anexo",
+      attachmentIds: [file.id],
+    }).expect(201)
+  ).body.id;
+  await call("patch", `/issues/${issue.id}/comments/${withFile}`, "member", {
+    body: "",
+  }).expect(200);
   assert.ok(
     (
       await call("patch", issuePath, "member", {
@@ -3220,4 +3239,122 @@ test("comments: only the author edits them, newly mentioned people are notified"
     current.version,
   ).expect(200);
   await call("patch", path, "member", { body: "Depois" }).expect(409);
+});
+test("tests: modules come from the project, are kept on edits and published by name", async () => {
+  const { project, suite } = await fixture();
+  const module = (name: string) =>
+    call("post", `/projects/${project.id}/issue-modules`, "owner", {
+      name,
+    }).expect(201);
+  const checkout = (await module("Carrinho / Checkout")).body;
+  const payments = (await module("Pagamentos")).body;
+  const [card] = suite.tests;
+  const edit = (body: object, version: number) =>
+    call(
+      "patch",
+      `/tests/${card.id}`,
+      "member",
+      {
+        title: card.title,
+        instructions: card.instructions,
+        expectedResult: card.expectedResult,
+        ...body,
+      },
+      version,
+    );
+  const current = async () =>
+    (await call("get", `/suites/${suite.id}`)).body.tests[0];
+  // A module of another project, or an unknown one, is refused.
+  await edit(
+    { moduleIds: ["99999999-9999-4999-8999-999999999999"] },
+    card.version,
+  ).expect(400);
+  await call(
+    "post",
+    `/tests/${card.id}/result`,
+    "member",
+    {
+      status: "approved",
+    },
+    card.version,
+  ).expect(200);
+  let test = await current();
+  await edit(
+    { moduleIds: [payments.id, checkout.id, checkout.id] },
+    test.version,
+  ).expect(200);
+  test = await current();
+  // Listed in the project's order; a new module is an edit that keeps the result.
+  assert.deepEqual(test.moduleIds, [checkout.id, payments.id]);
+  assert.equal(test.status, "approved");
+  // Omitting moduleIds keeps them; an empty list clears them.
+  await edit({ title: "Cartão renomeado" }, test.version).expect(200);
+  test = await current();
+  assert.deepEqual(test.moduleIds, [checkout.id, payments.id]);
+  const duplicate = (
+    await call("post", `/suites/${suite.id}/duplicate`, "owner").expect(201)
+  ).body;
+  assert.deepEqual(duplicate.tests[0].moduleIds, [checkout.id, payments.id]);
+  await edit({ moduleIds: [] }, test.version).expect(200);
+  assert.deepEqual((await current()).moduleIds, []);
+  const added = (
+    await call(
+      "post",
+      `/suites/${suite.id}/tests`,
+      "member",
+      { title: "Novo", moduleIds: [payments.id] },
+      (await call("get", `/suites/${suite.id}`)).body.version,
+    ).expect(201)
+  ).body;
+  assert.deepEqual(
+    (await call("get", `/suites/${suite.id}`)).body.tests.find(
+      (item: any) => item.id === added.id,
+    ).moduleIds,
+    [payments.id],
+  );
+  // Publishing keys name modules: existing ones match ignoring case and accents,
+  // missing ones are created in the project.
+  const key = (
+    await call("post", `/projects/${project.id}/keys`, "owner", {
+      name: "pending-qa-suite",
+    }).expect(201)
+  ).body;
+  const published = (
+    await call("post", `/projects/${project.id}/suites`, key.secret, {
+      title: "Release pendente",
+      tests: [
+        {
+          title: "Pagar com MB WAY",
+          modules: ["pagamentos", "Integrações Externas", "PAGAMENTOS"],
+        },
+        { title: "Sincronizar ERP", modules: ["integracoes externas"] },
+        { title: "Sem módulo" },
+      ],
+    })
+      .set("Idempotency-Key", "release-modules")
+      .expect(201)
+  ).body;
+  const config = (await call("get", `/projects/${project.id}/issue-config`))
+    .body;
+  assert.deepEqual(
+    config.modules.map((item: any) => item.name),
+    ["Carrinho / Checkout", "Pagamentos", "Integrações Externas"],
+  );
+  const integrations = config.modules[2].id;
+  assert.deepEqual(
+    published.tests.map((item: any) => item.moduleIds),
+    [[payments.id, integrations], [integrations], []],
+  );
+  // Deleted modules disappear from the tests.
+  await call(
+    "delete",
+    `/issue-modules/${payments.id}`,
+    "owner",
+    undefined,
+    payments.version,
+  ).expect(204);
+  assert.deepEqual(
+    (await call("get", `/suites/${published.id}`)).body.tests[0].moduleIds,
+    [integrations],
+  );
 });

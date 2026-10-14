@@ -450,7 +450,7 @@ export async function editComment(
     await db.query("SELECT 1 FROM attachments WHERE activity_id=$1 LIMIT 1", [
       commentId,
     ])
-  ).rowCount;
+  ).rows.length;
   if (!input.body && !files)
     throw new HttpError(400, "Escreva um comentário ou anexe um ficheiro.");
   const mentions = await mentioned(db, scope.projectId, input.mentions);
@@ -499,6 +499,12 @@ async function snapshot(
       [suiteId],
     )
   ).rows;
+  const modules = (
+    await db.query(
+      "SELECT l.test_id,l.module_id FROM test_module_links l JOIN tests t ON t.id=l.test_id JOIN issue_modules m ON m.id=l.module_id AND m.deleted_at IS NULL WHERE t.suite_id=$1 ORDER BY m.position,m.id",
+      [suiteId],
+    )
+  ).rows;
   const tests = (
     await db.query(
       "SELECT * FROM tests WHERE suite_id=$1 AND deleted_at IS NULL ORDER BY position,id",
@@ -517,6 +523,9 @@ async function snapshot(
         discussions: discussionCounts(
           discussions.find((item) => item.test_id === row.id),
         ),
+        moduleIds: modules
+          .filter((link) => link.test_id === row.id)
+          .map((link) => link.module_id as string),
       }) as TestCase,
   );
   return {
@@ -524,6 +533,63 @@ async function snapshot(
     ...summarize(tests.map((test) => test.status)),
     tests,
   } as Suite;
+}
+/** Fails unless every id is a module of the project that was not deleted. */
+async function checkModules(db: Connection, projectId: string, ids: string[]) {
+  if (!ids.length) return;
+  const found = (
+    await db.query(
+      "SELECT id FROM issue_modules WHERE project_id=$1 AND deleted_at IS NULL AND id = ANY($2::uuid[])",
+      [projectId, ids],
+    )
+  ).rows.length;
+  if (found !== ids.length)
+    throw new HttpError(400, "Um dos módulos não existe neste projeto.");
+}
+/**
+ * Module ids for published names: an existing module matches ignoring case and accents,
+ * the others are created at the end of the project's list.
+ */
+async function modulesByName(
+  db: Connection,
+  projectId: string,
+  names: string[],
+) {
+  if (!names.length) return [];
+  const fold = (value: string) =>
+    value
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
+      .toLowerCase();
+  const existing = (
+    await db.query(
+      "SELECT id,name FROM issue_modules WHERE project_id=$1 AND deleted_at IS NULL ORDER BY position",
+      [projectId],
+    )
+  ).rows as { id: string; name: string }[];
+  const ids: string[] = [];
+  for (const name of names) {
+    let module = existing.find((item) => fold(item.name) === fold(name));
+    if (!module) {
+      module = { id: randomUUID(), name: name.trim() };
+      await db.query(
+        "INSERT INTO issue_modules(id,project_id,name,position) VALUES($1,$2,$3,(SELECT coalesce(max(position),-1)+1 FROM issue_modules WHERE project_id=$2))",
+        [module.id, projectId, module.name],
+      );
+      existing.push(module);
+    }
+    ids.push(module.id);
+  }
+  return ids;
+}
+async function setTestModules(db: Connection, testId: string, ids: string[]) {
+  await db.query("DELETE FROM test_module_links WHERE test_id=$1", [testId]);
+  for (const moduleId of new Set(ids))
+    await db.query(
+      "INSERT INTO test_module_links(test_id,module_id) VALUES($1,$2)",
+      [testId, moduleId],
+    );
 }
 /** Explicit steps win; otherwise the first list of the instructions becomes the steps. */
 function definition(input: { instructions: string; steps?: string[] }) {
@@ -738,6 +804,12 @@ async function newSuite(
       ],
     );
     await insertSteps(db, testId, steps);
+    const moduleIds = [
+      ...(test.moduleIds ?? []),
+      ...(await modulesByName(db, projectId, test.modules ?? [])),
+    ];
+    await checkModules(db, projectId, [...new Set(moduleIds)]);
+    await setTestModules(db, testId, moduleIds);
     await event(db, suiteId, actor, "test_created", "", testId);
   }
   const members = (
@@ -1603,6 +1675,7 @@ export function createApi(
             steps: test.steps.map((step) => step.body),
             expectedResult: test.expectedResult,
             priority: test.priority,
+            moduleIds: test.moduleIds,
             assigneeId:
               test.assigneeId && members.includes(test.assigneeId)
                 ? test.assigneeId
@@ -1769,6 +1842,9 @@ export function createApi(
         )
       ).rows[0];
       await insertSteps(client, test.id, steps);
+      const moduleIds = [...new Set(input.moduleIds ?? [])];
+      await checkModules(client, suite.project_id, moduleIds);
+      await setTestModules(client, test.id, moduleIds);
       await touch(client, suiteId);
       const activityId = await event(
         client,
@@ -1815,6 +1891,21 @@ export function createApi(
       const stepsChanged =
         input.steps !== undefined &&
         JSON.stringify(input.steps) !== JSON.stringify(currentSteps);
+      const currentModules = (
+        await client.query(
+          "SELECT module_id FROM test_module_links WHERE test_id=$1 ORDER BY module_id",
+          [test.id],
+        )
+      ).rows.map((row) => row.module_id as string);
+      const nextModules =
+        input.moduleIds && [...new Set(input.moduleIds)].sort();
+      const modulesChanged =
+        !!nextModules &&
+        JSON.stringify(nextModules) !== JSON.stringify(currentModules);
+      if (modulesChanged) {
+        await checkModules(client, suite.project_id, nextModules);
+        await setTestModules(client, test.id, nextModules);
+      }
       const changed =
         stepsChanged ||
         test.instructions !== input.instructions ||
@@ -1866,10 +1957,11 @@ export function createApi(
       ).rows[0];
       const reassigned =
         input.assigneeId !== undefined && input.assigneeId !== test.assignee_id;
-      // A new title or priority is an edit, but never resets the result.
+      // A new title, priority or modules is an edit, but never resets the result.
       const retitled =
         test.title !== input.title ||
-        (input.priority !== undefined && input.priority !== test.priority);
+        (input.priority !== undefined && input.priority !== test.priority) ||
+        modulesChanged;
       if (changed || retitled || input.position !== undefined) {
         const activityId = await event(
           client,

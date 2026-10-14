@@ -52,6 +52,7 @@ export function fixtures(): Suite[] {
         ),
         testers: [],
         discussions: { total: 0, resolved: 0 },
+        moduleIds: [],
         expectedResult: "A operação é confirmada sem erros.",
         assigneeId: members[0].id,
         priority: index === 0 ? 1 : null,
