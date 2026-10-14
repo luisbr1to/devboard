@@ -14,6 +14,7 @@
 | M8 — Feed de atividade     | Notificações Teams via Graph com deep link para o teste e comentário                           | Implementado; validação no tenant pendente    |
 | M9 — Desenvolvimento       | Issues com tabela/board, estados/módulos/labels por projeto, reporter fixo e vários responsáveis | Implementado; validado localmente             |
 | M10 — Importação de issues | Assistente .xlsx/.csv com associação de pessoas e valores, idempotente e sem notificações      | Implementado; validado localmente             |
+| M11 — Discussões           | Discussões ao estilo GitLab em testes e issues: respostas, resolver/reabrir e contador nas rows | Implementado; validado localmente             |
 
 ## Sequência de ativação
 

@@ -31,6 +31,7 @@ Estados: **Implementado** = código entregue; **Validado localmente** = verifica
 | TH-021 | P1         | TH-019         | Validado localmente              | Importar .xlsx/.csv com associação de pessoas/valores, observações como comentários, sem avisos  |
 | TH-022 | P1         | TH-017, TH-019 | Implementado; tenant pendente    | Notificações de issues no feed do Teams e deep link `view=dev&issue=`                            |
 | TH-023 | P1         | TH-003         | Validado localmente              | Leitores só de leitura e bloqueio temporário de membros; pesquisa e filtro na tabela de membros |
+| TH-024 | P1         | TH-016, TH-019 | Validado localmente              | Discussões em testes e issues com respostas, resolver/reabrir e «resolvidas de total» nas rows   |
 
 ## Evoluções possíveis
 
@@ -78,6 +79,8 @@ Em 8 de outubro de 2026 (ações em lote): `typecheck`, 51 testes de API/runtime
 Em 8 de outubro de 2026 (colunas do board): `typecheck`, 52 testes de API/runtime (1 novo: disposição do board por pessoa e projeto), 14 testes rápidos Playwright (1 novo: ocultar, reordenar por arrastar e teclado, persistência e repor) e os 2 cenários end-to-end Docker concluídos. A preferência `issues.board.<projectId>` guarda `{ order, hidden }` e só é aceite para projetos a que a pessoa tem acesso.
 
 Em 9 de outubro de 2026 (prioridade dos testes): `typecheck`, 54 testes de API/runtime (1 novo: prioridade opcional na publicação por chave, mantida quando omitida numa edição, sem repor o resultado, copiada ao duplicar e recusada fora de 1–5) e 14 testes rápidos Playwright (o de testes de suite verifica a coluna Prioridade antes do Estado). A tabela de testes passa a cartões abaixo de 760 px de largura do contentor, para caber a nova coluna. A migração aditiva `012_test_priority.sql` foi aplicada à base de desenvolvimento `testhub`; os cenários end-to-end Docker não correram nesta revisão.
+
+Em 12 de outubro de 2026 (discussões): `typecheck`, 57 testes de API/runtime (3 novos: respostas só a discussões do mesmo teste/issue, resolver/reabrir mantendo quem resolveu primeiro, contagens por teste e por issue, leitores recusados, notificação dos participantes) e 15 testes rápidos Playwright (1 novo: menu Comentário/Discussão, resposta, resolver, recolher e reabrir, contador «1 de 2» na linha). Novos `PATCH /suites/{suiteId}/discussions/{discussionId}` e `PATCH /issues/{issueId}/discussions/{discussionId}`; os endpoints de comentários aceitam `discussion` e `replyTo`. A migração aditiva `013_discussions.sql` ainda não foi aplicada à base de desenvolvimento `testhub`; os cenários end-to-end Docker não correram nesta revisão.
 
 Não foram fornecidas credenciais Entra para a aceitação real. Não foram criados recursos cloud nem publicados pacotes Teams. Uma eventual implantação alojada terá de fornecer o seu próprio PostgreSQL e validar as migrações nesse ambiente. Atualizar este registo com os resultados efetivamente obtidos.
 

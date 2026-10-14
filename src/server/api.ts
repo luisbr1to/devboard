@@ -20,6 +20,7 @@ import {
   testInput,
   resultInput,
   commentInput,
+  discussionInput,
   stepResultInput,
   adminInput,
   memberInput,
@@ -330,10 +331,14 @@ async function event(
   body = "",
   testId: string | null = null,
   detail: Row = {},
+  thread: { discussion: boolean; replyTo: string | null } = {
+    discussion: false,
+    replyTo: null,
+  },
 ) {
   const activityId = randomUUID();
   await db.query(
-    "INSERT INTO activities(id,suite_id,test_id,actor_id,actor_name,kind,body,detail) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",
+    "INSERT INTO activities(id,suite_id,test_id,actor_id,actor_name,kind,body,detail,discussion,reply_to) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
     [
       activityId,
       suiteId,
@@ -343,6 +348,8 @@ async function event(
       kind,
       body,
       JSON.stringify(detail),
+      thread.discussion,
+      thread.replyTo,
     ],
   );
   return activityId;
@@ -352,6 +359,69 @@ async function touch(db: Connection, suiteId: string) {
     "UPDATE suites SET updated_at=clock_timestamp(),version=version+1 WHERE id=$1",
     [suiteId],
   );
+}
+export const discussionCounts = (row?: Row) => ({
+  total: Number(row?.total ?? 0),
+  resolved: Number(row?.resolved ?? 0),
+});
+/**
+ * Discussion fields of a new comment. A reply must target a discussion on the same
+ * suite/test or issue, given by `scope` (column values the discussion must match).
+ */
+export async function threadFields(
+  db: Connection,
+  input: { discussion: boolean; replyTo?: string },
+  scope: Record<"suite_id" | "test_id" | "issue_id", string | null>,
+) {
+  if (!input.replyTo) return { discussion: input.discussion, replyTo: null };
+  const root = (
+    await db.query(
+      "SELECT id FROM activities WHERE id=$1 AND discussion AND suite_id IS NOT DISTINCT FROM $2 AND test_id IS NOT DISTINCT FROM $3 AND issue_id IS NOT DISTINCT FROM $4",
+      [input.replyTo, scope.suite_id, scope.test_id, scope.issue_id],
+    )
+  ).rows[0];
+  if (!root) throw new HttpError(404, "Discussão não encontrada.");
+  return { discussion: false, replyTo: root.id as string };
+}
+/** Author and repliers of a discussion, notified of new replies. */
+export async function discussionPeople(db: Connection, replyTo: string | null) {
+  if (!replyTo) return [];
+  return (
+    await db.query(
+      "SELECT DISTINCT actor_id FROM activities WHERE (id=$1 OR reply_to=$1) AND actor_id IS NOT NULL",
+      [replyTo],
+    )
+  ).rows.map((row) => row.actor_id as string);
+}
+/** Notification detail of a comment: its excerpt and whether it starts or answers a discussion. */
+export const commentDetail = (
+  body: string,
+  thread: { discussion: boolean; replyTo: string | null },
+) => ({
+  excerpt: excerpt(body),
+  ...(thread.replyTo
+    ? { reply: true }
+    : thread.discussion
+      ? { discussion: true }
+      : {}),
+});
+/** Marks a discussion resolved or open again; returns the updated discussion. */
+export async function resolveDiscussion(
+  db: Connection,
+  actor: Actor,
+  discussionId: string,
+  resolved: boolean,
+  scope: { column: "suite_id" | "issue_id"; id: string },
+) {
+  const user = human(actor);
+  const row = (
+    await db.query(
+      `UPDATE activities SET resolved_at=CASE WHEN $2 THEN coalesce(resolved_at,clock_timestamp()) END,resolved_by=CASE WHEN $2 THEN coalesce(resolved_by,$3) END,resolved_by_name=CASE WHEN $2 THEN coalesce(resolved_by_name,$4) END WHERE id=$1 AND discussion AND ${scope.column}=$5 RETURNING *`,
+      [discussionId, resolved, user.id, actorName(actor), scope.id],
+    )
+  ).rows[0];
+  if (!row) throw new HttpError(404, "Discussão não encontrada.");
+  return row;
 }
 /** Activity kinds that make the actor a tester of the test. */
 const testerKinds = ["result_recorded", "comment", "step_recorded"];
@@ -375,6 +445,12 @@ async function snapshot(
       [suiteId, testerKinds],
     )
   ).rows;
+  const discussions = (
+    await db.query(
+      "SELECT test_id,count(*) AS total,count(resolved_at) AS resolved FROM activities WHERE suite_id=$1 AND test_id IS NOT NULL AND discussion GROUP BY test_id",
+      [suiteId],
+    )
+  ).rows;
   const tests = (
     await db.query(
       "SELECT * FROM tests WHERE suite_id=$1 AND deleted_at IS NULL ORDER BY position,id",
@@ -390,6 +466,9 @@ async function snapshot(
         testers: testers
           .filter((tester) => tester.test_id === row.id)
           .map((tester) => ({ id: tester.id, name: tester.name })),
+        discussions: discussionCounts(
+          discussions.find((item) => item.test_id === row.id),
+        ),
       }) as TestCase,
   );
   return {
@@ -1870,6 +1949,11 @@ export function createApi(
   ) {
     human(actor);
     const mentions = await mentioned(client, suite.project_id, input.mentions);
+    const thread = await threadFields(client, input, {
+      suite_id: suite.id,
+      test_id: test?.id ?? null,
+      issue_id: null,
+    });
     const activityId = await event(
       client,
       suite.id,
@@ -1878,6 +1962,7 @@ export function createApi(
       input.body,
       test?.id ?? null,
       mentions.length ? { mentions } : {},
+      thread,
     );
     await linkAttachments(client, actor, input.attachmentIds, {
       suiteId: suite.id,
@@ -1889,7 +1974,7 @@ export function createApi(
       suiteId: suite.id,
       testId: test?.id ?? null,
       activityId,
-      detail: { excerpt: excerpt(input.body) },
+      detail: commentDetail(input.body, thread),
     };
     await notify(client, actor, "mention", target, mentions);
     await notify(
@@ -1897,9 +1982,12 @@ export function createApi(
       actor,
       "comment",
       target,
-      test
-        ? [test.assignee_id, ...(await testerIds(client, "test_id", test.id))]
-        : await testerIds(client, "suite_id", suite.id),
+      [
+        ...(test
+          ? [test.assignee_id, ...(await testerIds(client, "test_id", test.id))]
+          : await testerIds(client, "suite_id", suite.id)),
+        ...(await discussionPeople(client, thread.replyTo)),
+      ],
       mentions,
     );
     await touch(client, suite.id);
@@ -1927,6 +2015,27 @@ export function createApi(
     });
     res.status(201).json({ ok: true, id: activityId });
   });
+  router.patch(
+    "/suites/:suiteId/discussions/:discussionId",
+    async (req, res) => {
+      const input = discussionInput.parse(req.body);
+      const actor = actorOf(res);
+      const suiteId = id(req, "suiteId");
+      const row = await transaction(db, async (client) => {
+        await suiteScope(client, suiteId, actor, { write: true, lock: true });
+        const row = await resolveDiscussion(
+          client,
+          actor,
+          id(req, "discussionId"),
+          input.resolved,
+          { column: "suite_id", id: suiteId },
+        );
+        await touch(client, suiteId);
+        return row;
+      });
+      res.json(dto(row));
+    },
+  );
   router.delete("/suites/:suiteId", async (req, res) => {
     const actor = actorOf(res);
     const suiteId = id(req, "suiteId");

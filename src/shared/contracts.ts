@@ -101,12 +101,21 @@ export const commentInput = z
     body: z.string().trim().max(50000).default(""),
     mentions: ids(20),
     attachmentIds: ids(10),
+    /** Starts a discussion that can be replied to and resolved. */
+    discussion: z.boolean().default(false),
+    /** Reply to this discussion (its first comment). */
+    replyTo: z.string().uuid().optional(),
   })
   .strict()
   .refine((data) => data.body || data.attachmentIds.length, {
     message: "Escreva um comentário ou anexe um ficheiro.",
     path: ["body"],
+  })
+  .refine((data) => !(data.discussion && data.replyTo), {
+    message: "Uma resposta não pode iniciar outra discussão.",
+    path: ["discussion"],
   });
+export const discussionInput = z.object({ resolved: z.boolean() }).strict();
 export const stepResultInput = z.object({ status: stepStatusSchema }).strict();
 export const setupInput = z
   .object({
@@ -377,6 +386,12 @@ export interface TestCase {
   steps: TestStep[];
   /** Members who recorded a result, commented or marked a step on this test. */
   testers: Tester[];
+  discussions: DiscussionCounts;
+}
+/** Discussions on a test or issue and how many are already resolved. */
+export interface DiscussionCounts {
+  total: number;
+  resolved: number;
 }
 export interface Suite {
   id: string;
@@ -414,6 +429,12 @@ export interface Activity {
   detail: Record<string, unknown>;
   createdAt: string;
   attachments: Attachment[];
+  /** First comment of a discussion: it takes replies and can be resolved. */
+  discussion: boolean;
+  /** The discussion this comment replies to. */
+  replyTo: string | null;
+  resolvedAt: string | null;
+  resolvedByName: string | null;
 }
 export type NotificationKind =
   | "result"
@@ -548,6 +569,7 @@ export interface Issue {
   moduleIds: string[];
   labelIds: string[];
   comments: number;
+  discussions: DiscussionCounts;
 }
 export interface IssuePage {
   items: Issue[];

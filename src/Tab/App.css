@@ -1904,6 +1904,168 @@ input[type="checkbox"] {
 .timeline-comment-body {
   padding: 10px var(--space-3);
 }
+/* Discussions (GitLab-style threads) */
+.discussion-meta {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+.discussion-state,
+.discussion-resolution > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--pass-fg);
+  font-size: 12px;
+  font-weight: 600;
+}
+.discussion-state svg,
+.discussion-resolution svg {
+  width: 14px;
+  height: 14px;
+}
+.discussion-replies {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--border);
+}
+.discussion-replies > li {
+  margin-left: var(--space-4);
+  border-left: 2px solid var(--border);
+  transition: background-color 0.9s ease;
+}
+.discussion-replies > li + li {
+  border-top: 1px solid var(--border);
+}
+.discussion-replies > li.timeline-flash {
+  background-color: var(--accent-soft);
+  transition: none;
+}
+.discussion-replies > li > header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px var(--space-2);
+  padding: var(--space-2) var(--space-3) 0;
+  font-size: 13px;
+}
+.discussion-replies > li > header time,
+.discussion-resolution time {
+  display: inline;
+  margin: 0;
+}
+.discussion-resolution {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: 6px var(--space-3);
+  border-top: 1px solid var(--border);
+  background: var(--pass-bg);
+}
+.discussion-resolution > span {
+  font-weight: 500;
+}
+.discussion-footer {
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--border);
+  background: var(--sunken);
+}
+.discussion-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.discussion-reply-trigger {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-field);
+  background: var(--surface);
+  color: var(--text-3);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: text;
+}
+.discussion-reply-trigger:hover {
+  border-color: var(--accent);
+}
+.discussion-toolbar > .btn {
+  margin-left: auto;
+}
+.discussion-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  margin-left: var(--space-2);
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
+  vertical-align: 1px;
+}
+.discussion-count svg {
+  width: 14px;
+  height: 14px;
+}
+.discussion-count.all-resolved {
+  border-color: color-mix(in srgb, var(--pass-fg) 35%, transparent);
+  background: var(--pass-bg);
+  color: var(--pass-fg);
+}
+.data-table .discussion-count {
+  margin-left: 0;
+  margin-top: 10px;
+}
+.board-card-footer .discussion-count {
+  margin-left: 0;
+}
+/* Comment button with a menu to start a discussion instead */
+.split-button {
+  display: inline-flex;
+}
+.split-button > .btn:first-child {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.split-button > .split-button-toggle {
+  width: 28px;
+  margin-left: 1px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+.comment-kind-menu {
+  z-index: 1000;
+  max-width: 300px;
+}
+.menu-option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.menu-option small {
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: normal;
+}
+.tiptap-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
 .timeline-note {
   margin-top: var(--space-2);
   padding: var(--space-2) var(--space-3);

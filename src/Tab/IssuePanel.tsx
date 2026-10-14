@@ -13,6 +13,7 @@ import {
   type OverflowAction,
 } from "./components";
 import { CommentForm } from "./forms";
+import { DiscussionActions } from "./discussions";
 import { assignable, day, issueKey } from "./presentation";
 import {
   dayText,
@@ -376,6 +377,23 @@ export function IssuePanel({
                 describe={describe}
                 focusId={focusActivity}
                 focusKey={focusKey}
+                discussionActions={
+                  readOnly
+                    ? undefined
+                    : (discussion) => (
+                        <DiscussionActions
+                          discussion={discussion}
+                          path={`/issues/${issue.id}/comments`}
+                          resolvePath={`/issues/${issue.id}/discussions/${discussion.id}`}
+                          target={{ issueId: issue.id }}
+                          members={members}
+                          onChanged={() => {
+                            setLocal((value) => value + 1);
+                            onChanged();
+                          }}
+                        />
+                      )
+                }
               />
             )}
           </section>

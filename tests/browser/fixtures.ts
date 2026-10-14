@@ -51,6 +51,7 @@ export function fixtures(): Suite[] {
           }),
         ),
         testers: [],
+        discussions: { total: 0, resolved: 0 },
         expectedResult: "A operação é confirmada sem erros.",
         assigneeId: members[0].id,
         priority: index === 0 ? 1 : null,
@@ -80,3 +81,10 @@ export function fixtures(): Suite[] {
     };
   });
 }
+/** Discussion fields of an activity that neither starts nor answers a discussion. */
+export const noThread = {
+  discussion: false,
+  replyTo: null,
+  resolvedAt: null,
+  resolvedByName: null,
+};

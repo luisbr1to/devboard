@@ -29,6 +29,7 @@ import {
   Assignee,
   Avatar,
   AvatarStack,
+  DiscussionCount,
   Button,
   Confirm,
   Empty,
@@ -58,6 +59,7 @@ import {
   assignable,
 } from "./presentation";
 import { DefinitionForm, ResultForm, CommentForm } from "./forms";
+import { DiscussionActions } from "./discussions";
 import { Priority } from "./issueUi";
 import { Pagination, pageSizes, usePageSize } from "./pagination";
 export function SuiteDetail({
@@ -215,12 +217,22 @@ export function SuiteDetail({
         ? status
         : null;
     switch (item.kind) {
-      case "comment":
+      case "comment": {
+        const action = item.replyTo
+          ? "respondeu a uma discussão"
+          : item.discussion
+            ? "iniciou uma discussão"
+            : "adicionou um comentário";
         return item.testId ? (
-          <>adicionou um comentário ao {testLink}</>
+          <>
+            {action} {item.replyTo || item.discussion ? "no" : "ao"} {testLink}
+          </>
         ) : (
-          <>adicionou um comentário à suite</>
+          <>
+            {action} {item.replyTo || item.discussion ? "na" : "à"} suite
+          </>
         );
+      }
       case "result_recorded":
         return (
           <>
@@ -727,6 +739,7 @@ export function SuiteDetail({
                                 {stepCount === 1 ? "passo" : "passos"}
                               </span>
                             )}
+                            <DiscussionCount counts={test.discussions} />
                           </td>
                           <td className="priority-column">
                             <Priority value={test.priority} />
@@ -1015,6 +1028,20 @@ export function SuiteDetail({
                   )}
                   focusId={focus?.activityId}
                   focusKey={focus}
+                  discussionActions={
+                    readOnly
+                      ? undefined
+                      : (discussion) => (
+                          <DiscussionActions
+                            discussion={discussion}
+                            path={`/tests/${selected.id}/comments`}
+                            resolvePath={`/suites/${suite.id}/discussions/${discussion.id}`}
+                            target={{ suiteId: suite.id, testId: selected.id }}
+                            members={members}
+                            onChanged={refresh}
+                          />
+                        )
+                  }
                 />
               )
             }

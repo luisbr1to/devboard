@@ -2952,3 +2952,181 @@ test("members: temporary blocks hide the project until lifted or expired", async
     null,
   );
 });
+test("discussions: replies, resolution and counts on tests", async () => {
+  const { project, suite, members } = await fixture();
+  const [card, email] = suite.tests;
+  await call("post", `/tests/${card.id}/comments`, "owner", {
+    body: "Comentário simples",
+  }).expect(201);
+  const root = (
+    await call("post", `/tests/${card.id}/comments`, "member", {
+      body: "Falha no Safari?",
+      discussion: true,
+    }).expect(201)
+  ).body.id;
+  // A reply cannot open another discussion, and only discussions take replies.
+  await call("post", `/tests/${card.id}/comments`, "guest", {
+    body: "Sim",
+    discussion: true,
+    replyTo: root,
+  }).expect(400);
+  const plain = (
+    await call("get", `/suites/${suite.id}/activity?testId=${card.id}`)
+  ).body.find((item: any) => item.body === "Comentário simples");
+  assert.equal(plain.discussion, false);
+  await call("post", `/tests/${card.id}/comments`, "guest", {
+    body: "Resposta",
+    replyTo: plain.id,
+  }).expect(404);
+  // Replies stay on the discussion's own test.
+  await call("post", `/tests/${email.id}/comments`, "guest", {
+    body: "Noutro teste",
+    replyTo: root,
+  }).expect(404);
+  await call("post", `/tests/${card.id}/comments`, "guest", {
+    body: "Sim, na versão 17.",
+    replyTo: root,
+  }).expect(201);
+  const thread = (
+    await call("get", `/suites/${suite.id}/activity?testId=${card.id}`)
+  ).body.filter((item: any) => item.id === root || item.replyTo === root);
+  assert.deepEqual(
+    thread.map((item: any) => [item.actorName, item.discussion, item.replyTo]),
+    [
+      ["João Costa", true, null],
+      ["Convidada", false, root],
+    ],
+  );
+  // The discussion author hears about replies.
+  const reply = (await notifications("member")).items[0];
+  assert.deepEqual(
+    [reply.kind, reply.detail.reply, reply.detail.excerpt],
+    ["comment", true, "Sim, na versão 17."],
+  );
+  const counts = async () =>
+    (await call("get", `/suites/${suite.id}`)).body.tests.map(
+      (test: any) => test.discussions,
+    );
+  assert.deepEqual(await counts(), [
+    { total: 1, resolved: 0 },
+    { total: 0, resolved: 0 },
+  ]);
+  const path = `/suites/${suite.id}/discussions/${root}`;
+  await call("patch", path, "outsider", { resolved: true }).expect(404);
+  await call("patch", `/suites/${suite.id}/discussions/${plain.id}`, "owner", {
+    resolved: true,
+  }).expect(404);
+  const resolved = (
+    await call("patch", path, "guest", { resolved: true }).expect(200)
+  ).body;
+  assert.equal(resolved.resolvedByName, "Convidada");
+  assert.ok(resolved.resolvedAt);
+  // Resolving again keeps who resolved it first.
+  const again = (
+    await call("patch", path, "owner", { resolved: true }).expect(200)
+  ).body;
+  assert.deepEqual(
+    [again.resolvedByName, again.resolvedAt],
+    [resolved.resolvedByName, resolved.resolvedAt],
+  );
+  assert.deepEqual((await counts())[0], { total: 1, resolved: 1 });
+  const reopened = (
+    await call("patch", path, "member", { resolved: false }).expect(200)
+  ).body;
+  assert.deepEqual(
+    [reopened.resolvedAt, reopened.resolvedByName],
+    [null, null],
+  );
+  assert.deepEqual((await counts())[0], { total: 1, resolved: 0 });
+  // Viewers read discussions but cannot resolve them.
+  const guestMembership = members.find(
+    (member: any) => member.oid === identities.guest.oid,
+  );
+  await call(
+    "patch",
+    `/projects/${project.id}/members/${guestMembership.id}`,
+    "owner",
+    { role: "viewer" },
+  ).expect(204);
+  await call("patch", path, "guest", { resolved: true }).expect(403);
+  await call("post", `/tests/${card.id}/comments`, "guest", {
+    body: "Leitura",
+    replyTo: root,
+  }).expect(403);
+});
+test("discussions: suite discussions notify their participants", async () => {
+  const { suite } = await fixture();
+  const root = (
+    await call("post", `/suites/${suite.id}/comments`, "guest", {
+      body: "Rever o âmbito",
+      discussion: true,
+    }).expect(201)
+  ).body.id;
+  await call("post", `/suites/${suite.id}/comments`, "member", {
+    body: "Concordo",
+    replyTo: root,
+  }).expect(201);
+  const [first] = (await notifications("guest")).items;
+  assert.deepEqual(
+    [first.kind, first.detail.reply, first.activityId === root],
+    ["comment", true, false],
+  );
+});
+test("discussions: issues count and resolve their own discussions", async () => {
+  const { project, suite } = await issueFixture();
+  const issue = (
+    await call("post", `/projects/${project.id}/issues`, "member", {
+      title: "Botão desalinhado",
+    }).expect(201)
+  ).body;
+  assert.deepEqual(issue.discussions, { total: 0, resolved: 0 });
+  const comments = `/issues/${issue.id}/comments`;
+  const first = (
+    await call("post", comments, "owner", {
+      body: "Qual o browser?",
+      discussion: true,
+    }).expect(201)
+  ).body.id;
+  await call("post", comments, "owner", {
+    body: "Também no tablet?",
+    discussion: true,
+  }).expect(201);
+  await call("post", comments, "member", {
+    body: "Chrome 130.",
+    replyTo: first,
+  }).expect(201);
+  const issueNote = (await notifications("owner")).items[0];
+  assert.deepEqual(
+    [issueNote.kind, issueNote.detail.reply],
+    ["issue_comment", true],
+  );
+  // A discussion from a suite cannot be answered or resolved through an issue.
+  const suiteRoot = (
+    await call("post", `/suites/${suite.id}/comments`, "owner", {
+      body: "Da suite",
+      discussion: true,
+    }).expect(201)
+  ).body.id;
+  await call("post", comments, "member", {
+    body: "Errado",
+    replyTo: suiteRoot,
+  }).expect(404);
+  await call(
+    "patch",
+    `/issues/${issue.id}/discussions/${suiteRoot}`,
+    "member",
+    { resolved: true },
+  ).expect(404);
+  await call("patch", `/issues/${issue.id}/discussions/${first}`, "member", {
+    resolved: true,
+  }).expect(200);
+  assert.deepEqual(
+    (await call("get", `/issues/${issue.id}`)).body.discussions,
+    { total: 2, resolved: 1 },
+  );
+  const listed = (
+    await call("get", `/projects/${project.id}/issues`).expect(200)
+  ).body.items.find((item: any) => item.id === issue.id);
+  assert.deepEqual(listed.discussions, { total: 2, resolved: 1 });
+  assert.equal(listed.comments, 3);
+});

@@ -20,13 +20,18 @@ function describe(item: AppNotification) {
       ? issueKey(item.detail.number)
       : "o issue";
   const status = item.detail.status as Status | undefined;
+  const commented = item.detail.reply
+    ? "respondeu a uma discussão"
+    : item.detail.discussion
+      ? "iniciou uma discussão"
+      : "comentou";
   switch (item.kind) {
     case "result":
       return `${item.actorName} marcou ${test} como ${status ? statusLabel(status) : "atualizado"}`;
     case "comment":
       return test
-        ? `${item.actorName} comentou em ${test}`
-        : `${item.actorName} comentou na suite ${suite}`;
+        ? `${item.actorName} ${commented} em ${test}`
+        : `${item.actorName} ${commented} na suite ${suite}`;
     case "mention":
       return `Menção de ${item.actorName} em ${test || suite}`;
     case "assignment":
@@ -50,7 +55,7 @@ function describe(item: AppNotification) {
     case "issue_assignment":
       return `${item.actorName} atribuiu-lhe ${issue}`;
     case "issue_comment":
-      return `${item.actorName} comentou em ${issue}`;
+      return `${item.actorName} ${commented} em ${issue}`;
     case "issue_mention":
       return `Menção de ${item.actorName} em ${issue}`;
     case "issue_status":

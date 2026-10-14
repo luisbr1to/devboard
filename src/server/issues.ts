@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
   commentInput,
+  discussionInput,
   issueArchiveInput,
   issueAssigneesInput,
   issueSelectionInput,
@@ -30,9 +31,11 @@ import {
   actorOf,
   assignableMember,
   checkAttachment,
+  commentDetail,
   digest,
+  discussionCounts,
+  discussionPeople,
   dto,
-  excerpt,
   expectVersion,
   human,
   id,
@@ -41,6 +44,8 @@ import {
   mentioned,
   notify,
   projectScope,
+  resolveDiscussion,
+  threadFields,
   type Row,
 } from "./api";
 
@@ -117,10 +122,14 @@ async function issueEvent(
   kind: string,
   body = "",
   detail: Row = {},
+  thread: { discussion: boolean; replyTo: string | null } = {
+    discussion: false,
+    replyTo: null,
+  },
 ) {
   const activityId = randomUUID();
   await db.query(
-    "INSERT INTO activities(id,issue_id,actor_id,actor_name,kind,body,detail) VALUES($1,$2,$3,$4,$5,$6,$7)",
+    "INSERT INTO activities(id,issue_id,actor_id,actor_name,kind,body,detail,discussion,reply_to) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)",
     [
       activityId,
       issueId,
@@ -129,6 +138,8 @@ async function issueEvent(
       kind,
       body,
       JSON.stringify(detail),
+      thread.discussion,
+      thread.replyTo,
     ],
   );
   return activityId;
@@ -294,7 +305,7 @@ async function issuePeople(db: Connection, issue: Row) {
 }
 
 const issueColumns =
-  "i.id,i.project_id,i.number,i.title,i.description,i.status_id,i.priority,i.estimate,i.reported_at,to_char(i.deployed_at,'YYYY-MM-DD') AS deployed_at,i.reporter_id,u.name AS reporter_name,i.reporter_note,i.external_ref,i.position,i.created_at,i.updated_at,i.archived_at,i.version,(SELECT count(*) FROM activities a WHERE a.issue_id=i.id AND a.kind='comment') AS comments";
+  "i.id,i.project_id,i.number,i.title,i.description,i.status_id,i.priority,i.estimate,i.reported_at,to_char(i.deployed_at,'YYYY-MM-DD') AS deployed_at,i.reporter_id,u.name AS reporter_name,i.reporter_note,i.external_ref,i.position,i.created_at,i.updated_at,i.archived_at,i.version,(SELECT count(*) FROM activities a WHERE a.issue_id=i.id AND a.kind='comment') AS comments,(SELECT json_build_object('total',count(*),'resolved',count(a.resolved_at)) FROM activities a WHERE a.issue_id=i.id AND a.discussion) AS discussions";
 async function hydrate(
   db: Connection | Database,
   rows: Row[],
@@ -323,6 +334,7 @@ async function hydrate(
     ...(dto(row) as Issue),
     estimate: row.estimate === null ? null : Number(row.estimate),
     comments: Number(row.comments),
+    discussions: discussionCounts(row.discussions),
     assignees: people
       .filter((person) => person.issue_id === row.id)
       .map((person) => ({ id: person.id, name: person.name })),
@@ -1311,6 +1323,11 @@ export function issueRoutes(router: Router, db: Database) {
         issue.project_id,
         input.mentions,
       );
+      const thread = await threadFields(client, input, {
+        suite_id: null,
+        test_id: null,
+        issue_id: issueId,
+      });
       const activityId = await issueEvent(
         client,
         issueId,
@@ -1318,6 +1335,7 @@ export function issueRoutes(router: Router, db: Database) {
         "comment",
         input.body,
         mentions.length ? { mentions } : {},
+        thread,
       );
       if (input.attachmentIds.length) {
         const linked = (
@@ -1336,15 +1354,43 @@ export function issueRoutes(router: Router, db: Database) {
         projectId: issue.project_id,
         issueId,
         activityId,
-        detail: { excerpt: excerpt(input.body) },
+        detail: commentDetail(input.body, thread),
       };
       await notify(client, actor, "issue_mention", target, mentions);
-      await notify(client, actor, "issue_comment", target, people, mentions);
+      await notify(
+        client,
+        actor,
+        "issue_comment",
+        target,
+        [...people, ...(await discussionPeople(client, thread.replyTo))],
+        mentions,
+      );
       await touch(client, issueId);
       return activityId;
     });
     res.status(201).json({ ok: true, id: activityId });
   });
+  router.patch(
+    "/issues/:issueId/discussions/:discussionId",
+    async (req, res) => {
+      const input = discussionInput.parse(req.body);
+      const actor = actorOf(res);
+      const issueId = id(req, "issueId");
+      const row = await transaction(db, async (client) => {
+        await issueScope(client, issueId, actor, { write: true, lock: true });
+        const row = await resolveDiscussion(
+          client,
+          actor,
+          id(req, "discussionId"),
+          input.resolved,
+          { column: "issue_id", id: issueId },
+        );
+        await touch(client, issueId);
+        return row;
+      });
+      res.json(dto(row));
+    },
+  );
   router.post(
     "/issues/:issueId/attachments",
     express.raw({ type: "application/octet-stream", limit: maxAttachment }),

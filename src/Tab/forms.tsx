@@ -1,7 +1,15 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import {
+  Menu,
+  MenuItemRadio,
+  MenuList,
+  MenuPopover,
+  MenuTrigger,
+} from "@fluentui/react-components";
 import {
   ArrowDownIcon,
   ArrowUpIcon,
+  ChevronDownIcon,
   PhotoIcon,
   PlusIcon,
   TrashIcon,
@@ -449,18 +457,77 @@ export function ResultForm({
     </Modal>
   );
 }
+/** Split-button menu choosing between a plain comment and a discussion, as in GitLab. */
+function CommentKindMenu({
+  discussion,
+  onChange,
+}: {
+  discussion: boolean;
+  onChange(discussion: boolean): void;
+}) {
+  const trigger = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
+  return (
+    <Menu
+      positioning="below-end"
+      open={open}
+      onOpenChange={(_, data) => setOpen(data.open)}
+      checkedValues={{ kind: [discussion ? "discussion" : "comment"] }}
+      onCheckedValueChange={(_, data) =>
+        onChange(data.checkedItems[0] === "discussion")
+      }
+      // A portal on <body> sits under a modal <dialog>'s top layer, so render inside it.
+      inline={!!trigger.current?.closest("dialog")}
+    >
+      <MenuTrigger disableButtonEnhancement>
+        <IconButton
+          ref={trigger}
+          size="sm"
+          variant="primary"
+          className="split-button-toggle"
+          label="Escolher tipo de comentário"
+          icon={<ChevronDownIcon />}
+        />
+      </MenuTrigger>
+      <MenuPopover className="comment-kind-menu">
+        <MenuList>
+          <MenuItemRadio name="kind" value="comment">
+            <span className="menu-option">
+              <strong>Comentário</strong>
+              <small>Adiciona um comentário geral.</small>
+            </span>
+          </MenuItemRadio>
+          <MenuItemRadio name="kind" value="discussion">
+            <span className="menu-option">
+              <strong>Discussão</strong>
+              <small>
+                Abre uma discussão com respostas, que tem de ser resolvida.
+              </small>
+            </span>
+          </MenuItemRadio>
+        </MenuList>
+      </MenuPopover>
+    </Menu>
+  );
+}
 export function CommentForm({
   path,
   target,
   members,
   onSaved,
+  replyTo,
+  onCancel,
 }: {
   path: string;
   target: UploadTarget;
   members: Member[];
   onSaved(): void;
+  /** Answers this discussion instead of adding a new comment. */
+  replyTo?: string;
+  onCancel?(): void;
 }) {
   const [body, setBody] = useState("");
+  const [discussion, setDiscussion] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const files = useAttachments(target);
@@ -476,6 +543,7 @@ export function CommentForm({
             body,
             mentions: mentionIds(body),
             attachmentIds: files.ids,
+            ...(replyTo ? { replyTo } : { discussion }),
           });
           setBody("");
           files.clear();
@@ -488,26 +556,59 @@ export function CommentForm({
       }}
     >
       <MarkdownField
-        label="Adicionar comentário"
-        placeholder="Descreva o que observou, cole uma captura ou escreva @ para mencionar…"
+        label={replyTo ? "Responder à discussão" : "Adicionar comentário"}
+        placeholder={
+          replyTo
+            ? "Escreva a sua resposta…"
+            : "Descreva o que observou, cole uma captura ou escreva @ para mencionar…"
+        }
         value={body}
         onChange={setBody}
         compact
+        focusOnMount={!!replyTo}
         mentionables={members}
         onFiles={files.add}
         footer={
           <PendingAttachments files={files.files} onRemove={files.remove} />
         }
         actions={
-          <Button
-            type="submit"
-            variant="primary"
-            size="sm"
-            disabled={(!body.trim() && !files.ids.length) || files.uploading}
-            disabledFocusable={busy}
-          >
-            {busy ? "A publicar…" : "Comentar"}
-          </Button>
+          <>
+            {onCancel && (
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={busy}
+                onClick={onCancel}
+              >
+                Cancelar
+              </Button>
+            )}
+            <span className={replyTo ? "" : "split-button"}>
+              <Button
+                type="submit"
+                variant="primary"
+                size="sm"
+                disabled={
+                  (!body.trim() && !files.ids.length) || files.uploading
+                }
+                disabledFocusable={busy}
+              >
+                {busy
+                  ? "A publicar…"
+                  : replyTo
+                    ? "Responder"
+                    : discussion
+                      ? "Iniciar discussão"
+                      : "Comentar"}
+              </Button>
+              {!replyTo && (
+                <CommentKindMenu
+                  discussion={discussion}
+                  onChange={setDiscussion}
+                />
+              )}
+            </span>
+          </>
         }
       />
       {error && <ErrorMessage message={error} />}

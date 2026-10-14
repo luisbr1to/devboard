@@ -7,6 +7,7 @@ import {
   suiteEditInput,
   testInput,
   commentInput,
+  discussionInput,
   memberInput,
   memberRoleInput,
   memberBlockInput,
@@ -277,8 +278,19 @@ operation(
   }),
   true,
 );
-operation("/tests/{testId}/comments", "post", "Comentar teste", commentInput);
+operation(
+  "/tests/{testId}/comments",
+  "post",
+  "Comentar teste; discussion abre uma discussão e replyTo responde a uma",
+  commentInput,
+);
 operation("/suites/{suiteId}/comments", "post", "Comentar suite", commentInput);
+operation(
+  "/suites/{suiteId}/discussions/{discussionId}",
+  "patch",
+  "Resolver ou reabrir uma discussão da suite ou de um dos seus testes",
+  discussionInput,
+);
 operation(
   "/projects/{projectId}/keys",
   "get",
@@ -446,7 +458,18 @@ for (const [action, label] of [
     `${label} as suites selecionadas; cada versão tem de coincidir (proprietário)`,
     suiteSelectionInput,
   );
-operation("/issues/{issueId}/comments", "post", "Comentar issue", commentInput);
+operation(
+  "/issues/{issueId}/comments",
+  "post",
+  "Comentar issue; discussion abre uma discussão e replyTo responde a uma",
+  commentInput,
+);
+operation(
+  "/issues/{issueId}/discussions/{discussionId}",
+  "patch",
+  "Resolver ou reabrir uma discussão do issue",
+  discussionInput,
+);
 operation(
   "/projects/{projectId}/issues/import",
   "post",

@@ -15,6 +15,7 @@ import type {
 } from "../shared/contracts";
 import {
   AvatarStack,
+  DiscussionCount,
   IconButton,
   OverflowActions,
   type OverflowAction,
@@ -292,6 +293,7 @@ export function IssueBoard({
                           {issue.comments}
                         </span>
                       )}
+                      <DiscussionCount counts={issue.discussions} />
                       {!readOnly && (
                         <OverflowActions
                           label={`Ações de ${issue.title}`}

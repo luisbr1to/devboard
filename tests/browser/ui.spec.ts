@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { fixtures, members, project } from "./fixtures";
+import { fixtures, members, noThread, project } from "./fixtures";
 import { summarize, type Activity } from "../../src/shared/contracts";
 async function mockApi(page: Page) {
   const suites = fixtures();
@@ -135,6 +135,7 @@ async function mockApi(page: Page) {
         detail: { status: data.status },
         createdAt: "2026-10-02T12:00:00Z",
         attachments: [],
+        ...noThread,
       });
       result = target;
     } else if (path.endsWith("/attachments") && req.method() === "POST") {
@@ -147,8 +148,31 @@ async function mockApi(page: Page) {
       };
     } else if (path.endsWith("/comments") && req.method() === "POST") {
       posted.push({ path, data });
+      const testCase = suites
+        .flatMap((suite) => suite.tests!)
+        .find((test) => path.includes(test.id));
+      activities.push({
+        id: `90000000-0000-4000-8000-${String(posted.length).padStart(12, "0")}`,
+        suiteId: testCase?.suiteId ?? suite?.id ?? null,
+        testId: testCase?.id ?? null,
+        actorName: "Ana Silva",
+        kind: "comment",
+        body: data.body,
+        detail: {},
+        createdAt: "2026-10-06T09:00:00Z",
+        attachments: [],
+        ...noThread,
+        discussion: !!data.discussion,
+        replyTo: data.replyTo ?? null,
+      });
       status = 201;
       result = { ok: true };
+    } else if (path.includes("/discussions/") && req.method() === "PATCH") {
+      posted.push({ path, data });
+      const discussion = activities.find((item) => path.endsWith(item.id))!;
+      discussion.resolvedAt = data.resolved ? "2026-10-06T09:30:00Z" : null;
+      discussion.resolvedByName = data.resolved ? "Ana Silva" : null;
+      result = discussion;
     } else if (suite && req.method() === "DELETE") {
       if (Number(req.headers()["if-match"]) !== suite.version) status = 409;
       else suites.splice(suites.indexOf(suite), 1);
@@ -481,6 +505,7 @@ test("suite tests support filters, scoped activity, reordering and TipTap checkl
     detail: {},
     createdAt: "2026-10-05T14:30:00Z",
     attachments: [],
+    ...noThread,
   });
   for (let index = 2; index <= 12; index++) {
     suites[0].tests!.push({
@@ -503,6 +528,7 @@ test("suite tests support filters, scoped activity, reordering and TipTap checkl
     detail: { status: "revoked" },
     createdAt: "2026-10-05T15:00:00Z",
     attachments: [],
+    ...noThread,
   });
   Object.assign(
     suites[0],
@@ -1074,6 +1100,7 @@ test("owners restore archived issues in bulk and archive by status rule", async 
     moduleIds: [],
     labelIds: [],
     comments: 0,
+    discussions: { total: 0, resolved: 0 },
   });
   let issues = [
     issue(1, "Repetido A", true),
@@ -1457,6 +1484,7 @@ test("board columns can be hidden and reordered per user, by drag or keyboard", 
     moduleIds: [],
     labelIds: [],
     comments: 0,
+    discussions: { total: 0, resolved: 0 },
   }));
   const key = `issues.board.${project.id}`;
   const preferences: Record<string, unknown> = { "issues.view": "board" };
@@ -1526,9 +1554,12 @@ test("board columns can be hidden and reordered per user, by drag or keyboard", 
   await page
     .locator(".board-column-header")
     .filter({ hasText: "Backlog" })
-    .dragTo(page.locator(".board-column").filter({ hasText: "Issue Duplicado" }), {
-      targetPosition: { x: 10, y: 40 },
-    });
+    .dragTo(
+      page.locator(".board-column").filter({ hasText: "Issue Duplicado" }),
+      {
+        targetPosition: { x: 10, y: 40 },
+      },
+    );
   await expect.poll(columns).toEqual(["Backlog", "Duplicado"]);
 
   // The layout is saved on the server and comes back after a reload.
@@ -1545,4 +1576,69 @@ test("board columns can be hidden and reordered per user, by drag or keyboard", 
   await page.getByRole("menuitem", { name: "Repor ordem e estados" }).click();
   await expect.poll(columns).toEqual(["Backlog", "Resolvido", "Duplicado"]);
   expect(saved.at(-1)).toEqual({ order: [], hidden: [] });
+});
+
+test("comments can start GitLab-style discussions that are replied to and resolved", async ({
+  page,
+}) => {
+  const { suites, posted } = await mockApi(page);
+  suites[0].tests![0].discussions = { total: 2, resolved: 1 };
+  await page.goto("/tests/browser/harness.html?screen=detail");
+  const row = page
+    .getByRole("row")
+    .filter({ hasText: "Validar fluxo principal" });
+  await expect(row.locator(".discussion-count")).toContainText("1 de 2");
+  await expect(row.locator(".discussion-count")).toHaveAttribute(
+    "title",
+    "1 de 2 discussões resolvidas",
+  );
+  await row.click();
+  const dialog = page.getByRole("dialog", { name: "Validar fluxo principal" });
+  // Comment is the default; the menu next to it switches to a discussion.
+  await expect(dialog.getByRole("button", { name: "Comentar" })).toBeVisible();
+  await dialog
+    .getByRole("button", { name: "Escolher tipo de comentário" })
+    .click();
+  await page.getByRole("menuitemradio", { name: /Discussão/ }).click();
+  await dialog.getByRole("textbox", { name: "Adicionar comentário" }).click();
+  await page.keyboard.type("Falha no Safari?");
+  await dialog.getByRole("button", { name: "Iniciar discussão" }).click();
+  await expect.poll(() => posted.length).toBe(1);
+  expect(posted[0].data).toMatchObject({
+    body: "Falha no Safari?",
+    discussion: true,
+  });
+  const thread = dialog.locator(".discussion");
+  await expect(thread).toContainText("Ana Silva iniciou uma discussão");
+  await thread.getByRole("button", { name: "Responder…" }).click();
+  await expect(
+    thread.getByRole("textbox", { name: "Responder à discussão" }),
+  ).toBeFocused();
+  await page.keyboard.type("Sim, na versão 17.");
+  await thread.getByRole("button", { name: "Responder", exact: true }).click();
+  await expect.poll(() => posted.length).toBe(2);
+  expect(posted[1].data).toMatchObject({
+    replyTo: "90000000-0000-4000-8000-000000000001",
+  });
+  expect(posted[1].data.discussion).toBeUndefined();
+  await expect(thread.locator(".discussion-replies li")).toHaveText(
+    /Ana Silva respondeu.*Sim, na versão 17\./,
+  );
+  await thread.getByRole("button", { name: "Resolver discussão" }).click();
+  await expect(thread).toContainText("Resolvida por Ana Silva");
+  expect(posted[2]).toEqual({
+    path: `/suites/${suites[0].id}/discussions/90000000-0000-4000-8000-000000000001`,
+    data: { resolved: true },
+  });
+  // Resolved discussions fold their replies and can be reopened.
+  await expect(thread.locator(".discussion-replies")).toHaveCount(0);
+  await thread.getByRole("button", { name: "Mostrar 1 resposta" }).click();
+  await expect(thread.locator(".discussion-replies li")).toHaveCount(1);
+  await expect(thread.getByRole("button", { name: "Responder…" })).toHaveCount(
+    0,
+  );
+  await thread.getByRole("button", { name: "Reabrir discussão" }).click();
+  await expect(
+    thread.getByRole("button", { name: "Resolver discussão" }),
+  ).toBeVisible();
 });

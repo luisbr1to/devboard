@@ -34,6 +34,7 @@ import {
 import { api, useRemote } from "./api";
 import {
   AvatarStack,
+  DiscussionCount,
   Button,
   Confirm,
   Empty,
@@ -469,7 +470,10 @@ export function IssueList({
           : text;
         return (
           <>
-            <strong className="row-title">{issue.title}</strong>
+            <strong className="row-title">
+              {issue.title}
+              <DiscussionCount counts={issue.discussions} />
+            </strong>
             {snippet && <span className="row-description">{snippet}</span>}
           </>
         );
