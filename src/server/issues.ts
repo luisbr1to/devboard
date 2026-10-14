@@ -1136,11 +1136,46 @@ export function issueRoutes(router: Router, db: Database) {
         ...(await assigneeIds(client, issue.id)),
       ];
       if (!issue.archived_at) await leaveColumn(client, issue);
+      const info = { number: issue.number, title: issue.title };
+      const { issue_soft_delete: keep } = (
+        await client.query(
+          "SELECT issue_soft_delete FROM projects WHERE id=$1",
+          [issue.project_id],
+        )
+      ).rows[0];
+      if (!keep) {
+        // Permanent deletion: the issue and everything attached to it go, freeing its number.
+        await client.query("DELETE FROM notifications WHERE issue_id=$1", [
+          issue.id,
+        ]);
+        await client.query("DELETE FROM attachments WHERE issue_id=$1", [
+          issue.id,
+        ]);
+        await client.query("DELETE FROM activities WHERE issue_id=$1", [
+          issue.id,
+        ]);
+        for (const table of [
+          "issue_assignees",
+          "issue_module_links",
+          "issue_label_links",
+        ])
+          await client.query(`DELETE FROM ${table} WHERE issue_id=$1`, [
+            issue.id,
+          ]);
+        await client.query("DELETE FROM issues WHERE id=$1", [issue.id]);
+        await notify(
+          client,
+          actor,
+          "issue_deleted",
+          { projectId: issue.project_id, detail: info },
+          people,
+        );
+        return;
+      }
       await client.query(
         "UPDATE issues SET deleted_at=clock_timestamp(),deleted_by=$2,updated_at=clock_timestamp(),version=version+1 WHERE id=$1",
         [issue.id, user.id],
       );
-      const info = { number: issue.number, title: issue.title };
       const activityId = await issueEvent(
         client,
         issue.id,

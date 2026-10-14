@@ -60,9 +60,9 @@ const issueKey = (number: number | null) => (number ? `IS-${number}` : "issue");
 /** Same hash route the web app understands (see src/Tab/routes.ts). */
 export function subEntityId(item: FeedItem) {
   const params = new URLSearchParams({ project: item.projectId });
-  if (item.issueId) {
+  if (item.issueId || item.kind.startsWith("issue_")) {
     params.set("view", "dev");
-    if (!item.issueDeleted) {
+    if (item.issueId && !item.issueDeleted) {
       params.set("issue", item.issueId);
       if (item.activityId) params.set("activity", item.activityId);
     }

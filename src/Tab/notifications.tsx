@@ -150,7 +150,8 @@ export function NotificationCenter({
                     }
                     setOpen(false);
                     // Deleted items open the closest place that still exists.
-                    if (item.issueId)
+                    // Permanently deleted issues leave no id; open Desenvolvimento.
+                    if (item.issueId || item.kind.startsWith("issue_"))
                       route(item.projectId, "", "dev", {
                         issue: item.issueDeleted ? null : item.issueId,
                         activity: item.activityId,

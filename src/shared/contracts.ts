@@ -42,6 +42,10 @@ const projectIcon = z
 export const projectInput = z
   .object({ name: title, description: markdown, icon: projectIcon })
   .strict();
+/** Whether deleted issues are kept is chosen once, when the project is created. */
+export const projectCreateInput = projectInput
+  .extend({ issueSoftDelete: z.boolean().default(true) })
+  .strict();
 export const testInput = z
   .object({
     title,
@@ -378,6 +382,8 @@ export interface Project {
   createdAt: string;
   updatedAt: string;
   icon: string | null;
+  /** False when deleted issues are removed permanently. */
+  issueSoftDelete: boolean;
   version: number;
   role: MemberRole;
 }

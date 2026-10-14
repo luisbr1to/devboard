@@ -13,6 +13,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { ZodError, z } from "zod";
 import { imageSize } from "image-size";
 import {
+  projectCreateInput,
   projectInput,
   suiteInput,
   suiteEditInput,
@@ -1211,14 +1212,20 @@ export function createApi(
   });
   router.post("/projects", async (req, res) => {
     administrator(res);
-    const input = projectInput.parse(req.body);
+    const input = projectCreateInput.parse(req.body);
     validateProjectIcon(input.icon);
     // Administrators own every project without joining it; they add the team afterwards.
     const project = await transaction(db, async (client) => {
       const row = (
         await client.query(
-          "INSERT INTO projects(id,name,description,icon_data_url) VALUES($1,$2,$3,$4) RETURNING *,icon_data_url AS icon",
-          [randomUUID(), input.name, input.description, input.icon ?? null],
+          "INSERT INTO projects(id,name,description,icon_data_url,issue_soft_delete) VALUES($1,$2,$3,$4,$5) RETURNING *,icon_data_url AS icon",
+          [
+            randomUUID(),
+            input.name,
+            input.description,
+            input.icon ?? null,
+            input.issueSoftDelete,
+          ],
         )
       ).rows[0];
       await seedIssueStatuses(client, row.id);

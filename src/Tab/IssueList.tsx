@@ -303,7 +303,9 @@ export function IssueList({
       title: "Apagar",
       done: ["apagado", "apagados"],
       description: (count: number) =>
-        `${count === 1 ? "Deixa" : "Deixam"} de aparecer para toda a equipa. Os comentários, anexos e histórico ficam guardados, mas esta ação não pode ser desfeita na aplicação.`,
+        project.issueSoftDelete
+          ? `${count === 1 ? "Deixa" : "Deixam"} de aparecer para toda a equipa. Os comentários, anexos e histórico ficam guardados, mas esta ação não pode ser desfeita na aplicação.`
+          : `${count === 1 ? "É removido" : "São removidos"} definitivamente, com comentários, anexos e histórico. Esta ação não pode ser desfeita.`,
     },
   } as const;
   /** Owners archive, restore or delete the selected issues in one transaction. */
@@ -408,7 +410,9 @@ export function IssueList({
                 setConfirmation({
                   title: "Apagar issue",
                   danger: true,
-                  description: `O ${issueKey(issue.number)} «${issue.title}» deixa de aparecer para toda a equipa. Os comentários, anexos e histórico ficam guardados, mas esta ação não pode ser desfeita na aplicação.`,
+                  description: project.issueSoftDelete
+                    ? `O ${issueKey(issue.number)} «${issue.title}» deixa de aparecer para toda a equipa. Os comentários, anexos e histórico ficam guardados, mas esta ação não pode ser desfeita na aplicação.`
+                    : `O ${issueKey(issue.number)} «${issue.title}» é removido definitivamente, com comentários, anexos e histórico. Esta ação não pode ser desfeita.`,
                   run: async () => {
                     await api(
                       `/issues/${issue.id}`,

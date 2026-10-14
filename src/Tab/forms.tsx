@@ -102,6 +102,7 @@ export function DefinitionForm({
   const [priority, setPriority] = useState(test?.priority ?? null);
   const [moduleIds, setModuleIds] = useState(test?.moduleIds ?? []);
   const [icon, setIcon] = useState<string | null>(project?.icon || null);
+  const [issueSoftDelete, setIssueSoftDelete] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [confirmed, setConfirmed] = useState(false);
@@ -139,7 +140,9 @@ export function DefinitionForm({
               result = await api(
                 project ? `/projects/${project.id}` : "/projects",
                 project ? "PATCH" : "POST",
-                { name: title, description, icon },
+                project
+                  ? { name: title, description, icon }
+                  : { name: title, description, icon, issueSoftDelete },
                 openedVersion,
               );
             else if (kind === "suite")
@@ -223,6 +226,24 @@ export function DefinitionForm({
             </div>
             <small>
               A imagem é reduzida automaticamente para um máximo de 48 × 48 px.
+            </small>
+          </div>
+        )}
+        {kind === "project" && !project && (
+          <div className="field">
+            <label>
+              <input
+                type="checkbox"
+                checked={issueSoftDelete}
+                onChange={(event) => setIssueSoftDelete(event.target.checked)}
+              />{" "}
+              Guardar issues apagados (Soft deletes)
+            </label>
+            <small>
+              {issueSoftDelete
+                ? "Os issues apagados deixam de aparecer, mas ficam guardados com comentários, anexos e histórico."
+                : "Os issues apagados são removidos definitivamente, com comentários e anexos, e os números libertados podem voltar a ser usados."}{" "}
+              Não pode ser alterado depois.
             </small>
           </div>
         )}

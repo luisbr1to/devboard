@@ -12,6 +12,7 @@ export const project: Project = {
   createdAt: "2026-10-02T10:00:00Z",
   updatedAt: "2026-10-02T10:00:00Z",
   icon: null,
+  issueSoftDelete: true,
   version: 1,
   role: "owner",
 };

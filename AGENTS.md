@@ -15,7 +15,7 @@ React 19 + Fluent UI v9 inside a Microsoft Teams tab at `/tabs/home/`. Express A
 - The rename to DevBoard is visual only: keep the `testhub` database/volume names, `TESTHUB_*` variables, `th_` key prefix and `testhub.*` browser keys.
 - Any project member can record results. A rejection must atomically include a nonempty explanation and actor attribution.
 - Progress counts approved and rejected tests. Empty suites remain pending. Suite status is derived, never directly editable.
-- Owners manage membership, keys and archival. Archived suites/projects are read-only; restoration preserves history. No permanent deletion.
+- Owners manage membership, keys and archival. Archived suites/projects are read-only; restoration preserves history. No permanent deletion, except issues in projects created with issue soft delete turned off (chosen at creation, never changed).
 - Editing instructions or expected results resets a test to pending and requires UI confirmation when replacing a recorded result.
 - Never infer identity or authorization from Teams context or client-supplied display names. Verify Entra JWTs and enforce membership on every resource request.
 - Publishing keys can only create suites in their project. Store hashes, expose secrets once, and require idempotency keys.

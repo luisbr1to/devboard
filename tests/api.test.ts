@@ -2715,6 +2715,78 @@ test("issues: spreadsheet import maps people and values, is atomic, retry-safe a
   assert.equal((await notifications("member")).items.length, before);
 });
 
+test("issues: projects without soft delete remove deleted issues for good and reuse their numbers", async () => {
+  const project = await createProject({
+    name: "Sem histórico",
+    issueSoftDelete: false,
+  });
+  assert.equal(project.issueSoftDelete, false);
+  // The choice is made at creation only.
+  await call(
+    "patch",
+    `/projects/${project.id}`,
+    "owner",
+    {
+      name: "Sem histórico",
+      issueSoftDelete: true,
+    },
+    project.version,
+  ).expect(400);
+  await call("post", `/projects/${project.id}/members`, "owner", {
+    oid: identities.member.oid,
+  }).expect(201);
+  const memberId = (
+    await call("get", `/projects/${project.id}/members`)
+  ).body.find((member: any) => member.oid === identities.member.oid).id;
+  const create = async (title: string) =>
+    (
+      await call("post", `/projects/${project.id}/issues`, "owner", {
+        title,
+        assigneeIds: [memberId],
+      }).expect(201)
+    ).body;
+  const first = await create("Primeiro");
+  const second = await create("Segundo");
+  await call("post", `/issues/${first.id}/comments`, "member", {
+    body: "Comentário",
+  }).expect(201);
+  await call(
+    "delete",
+    `/issues/${second.id}`,
+    "owner",
+    undefined,
+    second.version,
+  ).expect(204);
+  const current = (await call("get", `/issues/${first.id}`).expect(200)).body;
+  await call("post", `/projects/${project.id}/issues/delete`, "owner", {
+    issues: [{ id: current.id, version: current.version }],
+  }).expect(200);
+  for (const table of [
+    "issues",
+    "activities",
+    "notifications",
+    "issue_assignees",
+  ])
+    assert.equal(
+      (
+        await db.query(
+          `SELECT count(*)::int AS n FROM ${table} WHERE ${table === "issues" ? "id" : "issue_id"} = ANY($1::uuid[])`,
+          [[first.id, second.id]],
+        )
+      ).rows[0].n,
+      0,
+      table,
+    );
+  // The assignee still learns about the deletion, without a link to the removed issue.
+  const deleted = (await notifications("member")).items.filter(
+    (item: any) =>
+      item.kind === "issue_deleted" && item.projectId === project.id,
+  );
+  assert.equal(deleted.length, 2);
+  assert.ok(deleted.every((item: any) => item.issueId === null));
+  assert.equal((await create("Novo")).number, 1);
+});
+
 test("issues: per-user preferences", async () => {
   await call("get", "/me/preferences", "member").expect(200, {});
   await call("put", "/me/preferences/issues.columns", "member", {
