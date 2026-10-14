@@ -72,6 +72,7 @@ import { apiBlob } from "./api";
 import { AttachmentList, attachmentAccept } from "./attachments";
 import { MentionView, mentionEditor, type Mentionable } from "./mentions";
 import {
+  avatarText,
   date,
   initials,
   statusCounts,
@@ -917,13 +918,24 @@ export function Avatar({
   name,
   photo,
   size = "small",
+  color,
 }: {
   name: string;
   photo?: string | null;
   size?: "small" | "medium";
+  /** Background chosen by the person (#rrggbb); the theme's accent otherwise. */
+  color?: string | null;
 }) {
   return (
-    <span className={`user-avatar ${size}`} aria-hidden>
+    <span
+      className={`user-avatar ${size}`}
+      style={
+        color && !photo
+          ? { background: color, color: avatarText(color) }
+          : undefined
+      }
+      aria-hidden
+    >
       {photo ? <img src={photo} alt="" /> : initials(name)}
     </span>
   );
@@ -965,6 +977,7 @@ export function UserAvatar({
       name={member?.name || "Sem responsável"}
       photo={photo}
       size={size}
+      color={member?.avatarColor}
     />
   );
 }

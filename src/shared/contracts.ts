@@ -123,6 +123,15 @@ export const commentInput = z
     path: ["discussion"],
   });
 export const discussionInput = z.object({ resolved: z.boolean() }).strict();
+/** #rrggbb background of the signed-in person's avatar, or null for the default. */
+export const avatarColorInput = z
+  .object({
+    color: z
+      .string()
+      .regex(/^#[0-9a-f]{6}$/i, "Indique uma cor no formato #rrggbb.")
+      .nullable(),
+  })
+  .strict();
 /** New text of a comment, edited by its author; attachments stay as they are. */
 export const commentEditInput = z
   .object({
@@ -340,6 +349,8 @@ export interface User {
   tenantId: string;
   name: string;
   email: string;
+  /** Background of the initials avatar chosen by the person (#rrggbb); null for the default. */
+  avatarColor: string | null;
 }
 /** The signed-in person, with application-wide administration rights. */
 export interface Me extends User {

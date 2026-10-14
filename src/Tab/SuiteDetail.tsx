@@ -1251,7 +1251,13 @@ function TestPanel({
               <ul className="tester-list">
                 {test.testers.map((tester) => (
                   <li key={tester.id}>
-                    <Avatar name={tester.name} />
+                    <Avatar
+                      name={tester.name}
+                      color={
+                        members.find((member) => member.id === tester.id)
+                          ?.avatarColor
+                      }
+                    />
                     {tester.name}
                   </li>
                 ))}

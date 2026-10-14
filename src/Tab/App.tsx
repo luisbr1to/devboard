@@ -38,18 +38,12 @@ import {
 } from "./auth";
 import { endSession, setSession, useRemote } from "./api";
 import { Administration, Setup } from "./Admin";
-import {
-  Avatar,
-  Button,
-  ErrorMessage,
-  IconButton,
-  Loading,
-  Empty,
-} from "./components";
+import { Button, ErrorMessage, IconButton, Loading, Empty } from "./components";
 import { DefinitionForm } from "./forms";
 import { initials } from "./presentation";
 import { BrandIcon } from "./BrandIcon";
 import { NotificationCenter } from "./notifications";
+import { AvatarColorMenu } from "./avatarColor";
 import { adminHash, readRoute, route, routeHash } from "./routes";
 import { GlobalSearch } from "./search";
 import { IssueList } from "./IssueList";
@@ -551,7 +545,7 @@ function Workspace({
           </nav>
         )}
         <div className="sidebar-bottom">
-          <Avatar name={me.name} size="medium" />
+          <AvatarColorMenu me={me} onSaved={refresh} />
           <div>
             <strong>{me.name}</strong>
             <small>

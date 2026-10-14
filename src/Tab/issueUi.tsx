@@ -124,7 +124,7 @@ export const peopleOptions = (
         label,
         render: (
           <span className="select2-person">
-            <Avatar name={member.name} />
+            <Avatar name={member.name} color={member.avatarColor} />
             {label}
           </span>
         ),

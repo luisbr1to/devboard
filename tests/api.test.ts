@@ -3358,3 +3358,35 @@ test("tests: modules come from the project, are kept on edits and published by n
     [integrations],
   );
 });
+test("avatar colors: each person picks their own, everyone sees it", async () => {
+  const { project } = await fixture();
+  await call("put", "/me/avatar-color", "member", { color: "red" }).expect(400);
+  await call("put", "/me/avatar-color", "member", {
+    color: "#12345",
+  }).expect(400);
+  const saved = (
+    await call("put", "/me/avatar-color", "member", {
+      color: "#DB2777",
+    }).expect(200)
+  ).body;
+  assert.equal(saved.avatarColor, "#db2777");
+  assert.equal(
+    (await call("get", "/me", "member").expect(200)).body.avatarColor,
+    "#db2777",
+  );
+  const colors = async () =>
+    Object.fromEntries(
+      (await call("get", `/projects/${project.id}/members`)).body.map(
+        (member: any) => [member.name, member.avatarColor],
+      ),
+    );
+  assert.deepEqual(await colors(), {
+    "Ana Silva": null,
+    Convidada: null,
+    "João Costa": "#db2777",
+  });
+  // Signing in again keeps the colour; null goes back to the default.
+  await call("get", "/me", "member").expect(200);
+  await call("put", "/me/avatar-color", "member", { color: null }).expect(200);
+  assert.equal((await colors())["João Costa"], null);
+});

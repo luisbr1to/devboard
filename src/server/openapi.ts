@@ -9,6 +9,7 @@ import {
   commentInput,
   commentEditInput,
   discussionInput,
+  avatarColorInput,
   memberInput,
   memberRoleInput,
   memberBlockInput,
@@ -103,6 +104,12 @@ operation(
   "/me",
   "get",
   "Identidade atual, se é administrador e se o setup inicial está pendente",
+);
+operation(
+  "/me/avatar-color",
+  "put",
+  "Mudar a cor de fundo do próprio avatar (#rrggbb, ou null para a predefinida); visível para todos",
+  avatarColorInput,
 );
 operation(
   "/setup",

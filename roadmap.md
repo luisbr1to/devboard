@@ -16,6 +16,7 @@
 | M10 — Importação de issues | Assistente .xlsx/.csv com associação de pessoas e valores, idempotente e sem notificações      | Implementado; validado localmente             |
 | M11 — Discussões           | Discussões ao estilo GitLab em testes e issues: respostas, resolver/reabrir, contador nas rows e edição pelo autor | Implementado; validado localmente             |
 | M12 — Módulos nos testes   | Testes categorizados com os módulos do projeto, coluna e filtro, colunas configuráveis por pessoa | Implementado; validado localmente             |
+| M13 — Cor do avatar        | Cada pessoa escolhe a cor de fundo das iniciais, vista por toda a equipa | Implementado; validado localmente             |
 
 ## Sequência de ativação
 

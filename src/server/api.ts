@@ -22,6 +22,7 @@ import {
   commentInput,
   commentEditInput,
   discussionInput,
+  avatarColorInput,
   stepResultInput,
   adminInput,
   memberInput,
@@ -1092,6 +1093,15 @@ export function createApi(
     };
   };
   router.get("/me", (_req, res) => res.json(me(res)));
+  router.put("/me/avatar-color", async (req, res) => {
+    const color = avatarColorInput.parse(req.body).color?.toLowerCase() ?? null;
+    const user = human(actorOf(res));
+    await db.query("UPDATE users SET avatar_color=$2 WHERE id=$1", [
+      user.id,
+      color,
+    ]);
+    res.json({ ...me(res), avatarColor: color });
+  });
   router.post("/setup", async (req, res) => {
     const user = human(actorOf(res));
     const input = setupInput.parse(req.body);
@@ -1125,7 +1135,7 @@ export function createApi(
     return actor;
   };
   const adminColumns =
-    "u.id,u.oid,u.tenant_id,u.name,u.email,a.master,a.created_at,c.name AS created_by_name FROM app_admins a JOIN users u ON u.id=a.user_id LEFT JOIN users c ON c.id=a.created_by WHERE a.removed_at IS NULL";
+    "u.id,u.oid,u.tenant_id,u.name,u.email,u.avatar_color,a.master,a.created_at,c.name AS created_by_name FROM app_admins a JOIN users u ON u.id=a.user_id LEFT JOIN users c ON c.id=a.created_by WHERE a.removed_at IS NULL";
   router.get("/admins", async (_req, res) => {
     administrator(res);
     res.json(

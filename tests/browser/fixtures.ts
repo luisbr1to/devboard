@@ -22,6 +22,7 @@ export const members: Member[] = [
     tenantId: project.id,
     name: "Ana Silva",
     email: "ana@example.test",
+    avatarColor: null,
     role: "owner",
   },
 ];

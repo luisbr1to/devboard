@@ -1813,3 +1813,79 @@ test("the test table shows modules in a column that can be hidden, moved and fil
   await expect.poll(() => posted.length).toBe(1);
   expect(posted[0].data.moduleIds).toEqual([payments.id]);
 });
+
+test("the sidebar avatar opens a colour picker that saves the avatar background", async ({
+  page,
+}) => {
+  const ana = {
+    id: "10000000-0000-4000-8000-0000000000a1",
+    oid: "10000000-0000-4000-8000-000000000001",
+    tenantId: "local",
+    name: "Ana Silva",
+    email: "ana@local.test",
+    avatarColor: null as string | null,
+  };
+  const saved: (string | null)[] = [];
+  await page.route("**/api/v1/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname.replace("/api/v1", "");
+    let status = 200;
+    let result: unknown = {};
+    if (path === "/config")
+      result = {
+        mode: "local",
+        tenantId: "",
+        clientId: "",
+        resourceUri: "",
+        scope: "/access_as_user",
+        configured: true,
+        localUsers: [ana],
+      };
+    else if (path === "/auth/local/session") {
+      status = 201;
+      result = { token: "local-ana", user: ana };
+    } else if (path === "/me") result = { ...ana, admin: false };
+    else if (path === "/me/avatar-color") {
+      ana.avatarColor = request.postDataJSON().color;
+      saved.push(ana.avatarColor);
+      result = ana;
+    } else if (path === "/projects") result = [];
+    else {
+      status = 404;
+      result = { error: "Mock não definido" };
+    }
+    await route.fulfill({
+      status,
+      contentType: "application/json",
+      body: JSON.stringify(result),
+    });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Entrar localmente" }).click();
+  const avatar = page.locator(".sidebar-bottom .user-avatar");
+  await expect(avatar).toHaveText("AS");
+  await page.getByRole("button", { name: "Mudar a cor do avatar" }).click();
+  const panel = page.getByRole("dialog", { name: "Cor do avatar" });
+  await expect(
+    panel.getByRole("button", { name: "Repor predefinida" }),
+  ).toBeDisabled();
+  // A dark swatch gets white initials, a light one dark initials.
+  await panel.getByRole("button", { name: "Rosa" }).click();
+  await expect.poll(() => saved).toEqual(["#db2777"]);
+  await expect(panel.getByRole("button", { name: "Rosa" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(avatar).toHaveCSS("background-color", "rgb(219, 39, 119)");
+  await expect(avatar).toHaveCSS("color", "rgb(255, 255, 255)");
+  await panel.getByRole("button", { name: "Amarelo" }).click();
+  await expect.poll(() => saved.at(-1)).toBe("#facc15");
+  await expect(avatar).toHaveCSS("color", "rgb(24, 24, 29)");
+  // The custom picker saves once, after the person stops choosing.
+  await panel.locator('input[type="color"]').fill("#123456");
+  await expect.poll(() => saved.at(-1)).toBe("#123456");
+  await expect(avatar).toHaveCSS("background-color", "rgb(18, 52, 86)");
+  await panel.getByRole("button", { name: "Repor predefinida" }).click();
+  await expect.poll(() => saved.at(-1)).toBe(null);
+  expect(saved).toHaveLength(4);
+});

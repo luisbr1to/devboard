@@ -171,7 +171,11 @@ export function Administration({
                     <tr key={admin.id}>
                       <td>
                         <span className="member-name">
-                          <Avatar name={admin.name} size="small" />
+                          <Avatar
+                            name={admin.name}
+                            size="small"
+                            color={admin.avatarColor}
+                          />
                           <span>
                             <strong>
                               {admin.name}

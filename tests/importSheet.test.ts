@@ -43,6 +43,7 @@ const members: Member[] = [
     tenantId: "",
     name: "Inês Rocha",
     email: "ines.rocha@exemplo.pt",
+    avatarColor: null,
     role: "owner",
   },
   {
@@ -51,6 +52,7 @@ const members: Member[] = [
     tenantId: "",
     name: "Tomás Ferreira",
     email: "tomas.ferreira@cliente.example",
+    avatarColor: null,
     role: "member",
   },
   {
@@ -59,6 +61,7 @@ const members: Member[] = [
     tenantId: "",
     name: "Carla Mendes",
     email: "cmendes@cliente.example",
+    avatarColor: null,
     role: "member",
   },
 ];

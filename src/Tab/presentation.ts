@@ -20,6 +20,19 @@ export function statusCounts(counts: Record<Status, number>) {
   };
 }
 
+/** Initials colour on a chosen avatar background: white or near-black, whichever contrasts more. */
+export function avatarText(background: string) {
+  const channel = (offset: number) => {
+    const value = parseInt(background.slice(offset, offset + 2), 16) / 255;
+    return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  };
+  const luminance =
+    0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5);
+  // Contrast against white (luminance 1) and against #18181d (≈0.0094).
+  return 1.05 / (luminance + 0.05) >= (luminance + 0.05) / 0.0594
+    ? "#ffffff"
+    : "#18181d";
+}
 const pad = (value: number) => String(value).padStart(2, "0");
 /** 06/10/2026 14:55 */
 export const date = (value: string | null | undefined) => {
