@@ -3130,3 +3130,94 @@ test("discussions: issues count and resolve their own discussions", async () => 
   assert.deepEqual(listed.discussions, { total: 2, resolved: 1 });
   assert.equal(listed.comments, 3);
 });
+test("comments: only the author edits them, newly mentioned people are notified", async () => {
+  const { suite, members } = await fixture();
+  const guestId = members.find(
+    (member: any) => member.oid === identities.guest.oid,
+  ).id;
+  const [card] = suite.tests;
+  const root = (
+    await call("post", `/tests/${card.id}/comments`, "member", {
+      body: "Falha no Safari",
+      discussion: true,
+    }).expect(201)
+  ).body.id;
+  const path = `/suites/${suite.id}/comments/${root}`;
+  await call("patch", path, "owner", { body: "Outro texto" }).expect(403);
+  await call("patch", path, "outsider", { body: "Outro texto" }).expect(404);
+  await call("patch", path, "member", { body: "  " }).expect(400);
+  await call("patch", path, "member", {
+    body: "Falha",
+    mentions: [identities.outsider.oid],
+  }).expect(400);
+  const before = (await notifications("guest")).items.length;
+  const edited = (
+    await call("patch", path, "member", {
+      body: "Falha no Safari 17, @Convidada consegue confirmar?",
+      mentions: [guestId],
+    }).expect(200)
+  ).body;
+  assert.ok(edited.editedAt);
+  assert.equal(edited.discussion, true);
+  const guest = await notifications("guest");
+  assert.equal(guest.items.length, before + 1);
+  assert.deepEqual(
+    [guest.items[0].kind, guest.items[0].activityId],
+    ["mention", root],
+  );
+  // Keeping the same mention does not notify again, and the text is what search finds.
+  await call("patch", path, "member", {
+    body: "Falha no Safari 17 e 18, @Convidada consegue confirmar?",
+    mentions: [guestId],
+  }).expect(200);
+  assert.equal((await notifications("guest")).items.length, before + 1);
+  const listed = (
+    await call("get", `/suites/${suite.id}/activity?testId=${card.id}`)
+  ).body.find((item: any) => item.id === root);
+  assert.equal(
+    listed.body,
+    "Falha no Safari 17 e 18, @Convidada consegue confirmar?",
+  );
+  assert.equal(listed.actorId, edited.actorId);
+  // Only comments are editable, and only through their own suite or issue.
+  const result = (
+    await call("get", `/suites/${suite.id}/activity?testId=${card.id}`)
+  ).body.find((item: any) => item.kind !== "comment");
+  if (result)
+    await call("patch", `/suites/${suite.id}/comments/${result.id}`, "owner", {
+      body: "x",
+    }).expect(404);
+  const { project: other } = await issueFixture();
+  const issue = (
+    await call("post", `/projects/${other.id}/issues`, "member", {
+      title: "Botão desalinhado",
+    }).expect(201)
+  ).body;
+  await call("patch", `/issues/${issue.id}/comments/${root}`, "member", {
+    body: "Errado",
+  }).expect(404);
+  const issueComment = (
+    await call("post", `/issues/${issue.id}/comments`, "member", {
+      body: "No Chrome",
+    }).expect(201)
+  ).body.id;
+  const issuePath = `/issues/${issue.id}/comments/${issueComment}`;
+  await call("patch", issuePath, "owner", { body: "Firefox" }).expect(403);
+  assert.ok(
+    (
+      await call("patch", issuePath, "member", {
+        body: "No Chrome e Firefox",
+      }).expect(200)
+    ).body.editedAt,
+  );
+  // Archived suites are read-only, so their comments cannot be edited.
+  const current = (await call("get", `/suites/${suite.id}`)).body;
+  await call(
+    "post",
+    `/suites/${suite.id}/archive`,
+    "owner",
+    undefined,
+    current.version,
+  ).expect(200);
+  await call("patch", path, "member", { body: "Depois" }).expect(409);
+});

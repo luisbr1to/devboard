@@ -372,11 +372,23 @@ function Workspace({
     return () => window.removeEventListener("hashchange", change);
   }, []);
   useEffect(() => {
-    const interval = window.setInterval(refresh, 30000);
-    window.addEventListener("focus", refresh);
+    // Refresh every 30 s while visible, and on return to the tab; focus events come in
+    // bursts inside Teams, so a refresh in the last 10 s is enough.
+    let last = Date.now();
+    const poll = (minimum: number) => () => {
+      if (document.hidden || Date.now() - last < minimum) return;
+      last = Date.now();
+      refresh();
+    };
+    const tick = poll(0);
+    const back = poll(10000);
+    const interval = window.setInterval(tick, 30000);
+    window.addEventListener("focus", back);
+    document.addEventListener("visibilitychange", back);
     return () => {
       window.clearInterval(interval);
-      window.removeEventListener("focus", refresh);
+      window.removeEventListener("focus", back);
+      document.removeEventListener("visibilitychange", back);
     };
   }, []);
   useEffect(() => {

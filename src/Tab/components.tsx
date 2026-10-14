@@ -1168,111 +1168,13 @@ export function DiscussionCount({ counts }: { counts: DiscussionCounts }) {
     </span>
   );
 }
-function CommentContent({ item }: { item: Activity }) {
-  return (
-    <div className="timeline-comment-body">
-      {item.body && <Markdown>{item.body}</Markdown>}
-      <AttachmentList files={item.attachments || []} />
-    </div>
-  );
-}
-/** First comment of a discussion with its replies; resolved discussions fold their replies. */
-function Discussion({
-  root,
-  replies,
-  context,
-  flash,
-  focusId,
-  actions,
-}: {
-  root: Activity;
-  replies: Activity[];
-  context: string | null;
-  flash?: string;
-  focusId?: string;
-  actions?: ReactNode;
-}) {
-  const [shown, setShown] = useState<boolean>();
-  const resolved = !!root.resolvedAt;
-  const open =
-    shown ?? (!resolved || replies.some((reply) => reply.id === focusId));
-  return (
-    <article
-      className={`timeline-comment discussion${resolved ? " discussion-resolved" : ""}`}
-    >
-      <header>
-        <span>
-          <strong>{root.actorName}</strong> iniciou uma discussão
-          {context && <span> em {context}</span>}
-        </span>
-        <span className="discussion-meta">
-          {resolved && (
-            <span className="discussion-state">
-              <CheckCircleIcon aria-hidden />
-              Resolvida
-            </span>
-          )}
-          <time className="mono" dateTime={root.createdAt}>
-            {date(root.createdAt)}
-          </time>
-        </span>
-      </header>
-      <CommentContent item={root} />
-      {open && replies.length > 0 && (
-        <ol className="discussion-replies">
-          {replies.map((reply) => (
-            <li
-              key={reply.id}
-              data-activity={reply.id}
-              className={reply.id === flash ? "timeline-flash" : undefined}
-            >
-              <header>
-                <span>
-                  <strong>{reply.actorName}</strong> respondeu
-                </span>
-                <time className="mono" dateTime={reply.createdAt}>
-                  {date(reply.createdAt)}
-                </time>
-              </header>
-              <CommentContent item={reply} />
-            </li>
-          ))}
-        </ol>
-      )}
-      {resolved && (
-        <div className="discussion-resolution">
-          <span>
-            <CheckCircleIcon aria-hidden />
-            Resolvida por {root.resolvedByName || "antigo membro"} ·{" "}
-            <time className="mono" dateTime={root.resolvedAt!}>
-              {date(root.resolvedAt!)}
-            </time>
-          </span>
-          {replies.length > 0 && (
-            <Button
-              size="sm"
-              variant="ghost"
-              aria-expanded={open}
-              onClick={() => setShown(!open)}
-            >
-              {open
-                ? "Ocultar respostas"
-                : `Mostrar ${replies.length} ${replies.length === 1 ? "resposta" : "respostas"}`}
-            </Button>
-          )}
-        </div>
-      )}
-      {actions && <footer className="discussion-footer">{actions}</footer>}
-    </article>
-  );
-}
 export function Timeline({
   items,
   testTitles,
   focusId,
   focusKey,
   describe,
-  discussionActions,
+  renderComment,
 }: {
   items: Activity[];
   testTitles?: Record<string, string>;
@@ -1281,8 +1183,14 @@ export function Timeline({
   /** Activity to highlight and scroll to (link from a notification or search). */
   focusId?: string;
   focusKey?: unknown;
-  /** Reply and resolve controls of a discussion; left out where comments are read-only. */
-  discussionActions?(discussion: Activity): ReactNode;
+  /** Renders a comment, with its replies when it starts a discussion. */
+  renderComment(entry: {
+    item: Activity;
+    replies: Activity[];
+    context: string | null;
+    flash?: string;
+    focusId?: string;
+  }): ReactNode;
 }) {
   const flash = useFlash(
     focusId,
@@ -1322,29 +1230,14 @@ export function Timeline({
           >
             <span className="timeline-dot" aria-hidden />
             <div className="timeline-entry">
-              {item.discussion ? (
-                <Discussion
-                  root={item}
-                  replies={replies.get(item.id) || []}
-                  context={context}
-                  flash={flash}
-                  focusId={focusId}
-                  actions={discussionActions?.(item)}
-                />
-              ) : item.kind === "comment" ? (
-                <article className="timeline-comment">
-                  <header>
-                    <span>
-                      <strong>{item.actorName}</strong>{" "}
-                      {item.replyTo ? "respondeu a uma discussão" : "comentou"}
-                      {context && <span> em {context}</span>}
-                    </span>
-                    <time className="mono" dateTime={item.createdAt}>
-                      {date(item.createdAt)}
-                    </time>
-                  </header>
-                  <CommentContent item={item} />
-                </article>
+              {item.kind === "comment" ? (
+                renderComment({
+                  item,
+                  replies: replies.get(item.id) || [],
+                  context,
+                  flash,
+                  focusId,
+                })
               ) : (
                 <div className="timeline-event">
                   <div>

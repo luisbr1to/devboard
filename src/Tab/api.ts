@@ -86,12 +86,19 @@ export async function apiBlob(path: string): Promise<Blob | null> {
   if (!response.ok) throw new Error("Não foi possível carregar a fotografia.");
   return response.blob();
 }
+/**
+ * Loads `path` again whenever `revision` changes. A reload keeps showing the current
+ * data (no loading state), and an identical response keeps the same object, so
+ * periodic refreshes do not re-render or remount what the person is working on.
+ */
 export function useRemote<T>(path: string | null, revision: number) {
   const [state, setState] = useState<{
     data?: T;
     error?: string;
     loading: boolean;
     path: string | null;
+    /** Serialized data, to recognize an unchanged response. */
+    json?: string;
   }>({ loading: true, path: null });
   useEffect(() => {
     if (!path) {
@@ -99,16 +106,20 @@ export function useRemote<T>(path: string | null, revision: number) {
       return;
     }
     const controller = new AbortController();
-    setState((previous) => ({
-      ...(previous.path === path ? previous : {}),
-      path,
-      loading: true,
-      error: undefined,
-    }));
+    setState((previous) =>
+      previous.path === path && previous.data !== undefined
+        ? previous
+        : { path, loading: true },
+    );
     void api<T>(path, "GET", undefined, undefined, controller.signal)
       .then((data) => {
-        if (!controller.signal.aborted)
-          setState({ data, path, loading: false });
+        if (controller.signal.aborted) return;
+        const json = JSON.stringify(data);
+        setState((previous) =>
+          previous.path === path && previous.json === json && !previous.error
+            ? previous
+            : { data, json, path, loading: false },
+        );
       })
       .catch((error) => {
         if (!controller.signal.aborted)

@@ -20,6 +20,7 @@ import {
   testInput,
   resultInput,
   commentInput,
+  commentEditInput,
   discussionInput,
   stepResultInput,
   adminInput,
@@ -422,6 +423,53 @@ export async function resolveDiscussion(
   ).rows[0];
   if (!row) throw new HttpError(404, "Discussão não encontrada.");
   return row;
+}
+/**
+ * Replaces the text of a comment, which only its author may do. Returns the updated
+ * comment and the people it mentions for the first time, for the caller to notify.
+ */
+export async function editComment(
+  db: Connection,
+  actor: Actor,
+  commentId: string,
+  input: z.infer<typeof commentEditInput>,
+  scope: { column: "suite_id" | "issue_id"; id: string; projectId: string },
+) {
+  const user = human(actor);
+  // Comments of deleted tests are no longer shown, so they cannot be edited either.
+  const current = (
+    await db.query(
+      `SELECT a.* FROM activities a LEFT JOIN tests t ON t.id=a.test_id WHERE a.id=$1 AND a.kind='comment' AND a.${scope.column}=$2 AND t.deleted_at IS NULL`,
+      [commentId, scope.id],
+    )
+  ).rows[0];
+  if (!current) throw new HttpError(404, "Comentário não encontrado.");
+  if (current.actor_id !== user.id)
+    throw new HttpError(403, "Só o autor pode editar o comentário.");
+  const files = (
+    await db.query("SELECT 1 FROM attachments WHERE activity_id=$1 LIMIT 1", [
+      commentId,
+    ])
+  ).rowCount;
+  if (!input.body && !files)
+    throw new HttpError(400, "Escreva um comentário ou anexe um ficheiro.");
+  const mentions = await mentioned(db, scope.projectId, input.mentions);
+  if (input.body === current.body) return { row: current, mentions: [] };
+  const { mentions: previous = [], ...detail } = current.detail || {};
+  const row = (
+    await db.query(
+      "UPDATE activities SET body=$2,detail=$3,edited_at=clock_timestamp() WHERE id=$1 RETURNING *",
+      [
+        commentId,
+        input.body,
+        JSON.stringify(mentions.length ? { ...detail, mentions } : detail),
+      ],
+    )
+  ).rows[0];
+  return {
+    row,
+    mentions: mentions.filter((person) => !previous.includes(person)),
+  };
 }
 /** Activity kinds that make the actor a tester of the test. */
 const testerKinds = ["result_recorded", "comment", "step_recorded"];
@@ -2036,6 +2084,40 @@ export function createApi(
       res.json(dto(row));
     },
   );
+  router.patch("/suites/:suiteId/comments/:commentId", async (req, res) => {
+    const input = commentEditInput.parse(req.body);
+    const actor = actorOf(res);
+    const suiteId = id(req, "suiteId");
+    const row = await transaction(db, async (client) => {
+      const { suite } = await suiteScope(client, suiteId, actor, {
+        write: true,
+        lock: true,
+      });
+      const { row, mentions } = await editComment(
+        client,
+        actor,
+        id(req, "commentId"),
+        input,
+        { column: "suite_id", id: suiteId, projectId: suite.project_id },
+      );
+      await notify(
+        client,
+        actor,
+        "mention",
+        {
+          projectId: suite.project_id,
+          suiteId,
+          testId: row.test_id,
+          activityId: row.id,
+          detail: { excerpt: excerpt(row.body) },
+        },
+        mentions,
+      );
+      await touch(client, suiteId);
+      return row;
+    });
+    res.json(dto(row));
+  });
   router.delete("/suites/:suiteId", async (req, res) => {
     const actor = actorOf(res);
     const suiteId = id(req, "suiteId");

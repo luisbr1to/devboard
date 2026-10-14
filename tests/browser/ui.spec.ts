@@ -167,6 +167,14 @@ async function mockApi(page: Page) {
       });
       status = 201;
       result = { ok: true };
+    } else if (path.includes("/comments/") && req.method() === "PATCH") {
+      posted.push({ path, data });
+      const comment = activities.find((item) => path.endsWith(item.id))!;
+      Object.assign(comment, {
+        body: data.body,
+        editedAt: "2026-10-06T09:45:00Z",
+      });
+      result = comment;
     } else if (path.includes("/discussions/") && req.method() === "PATCH") {
       posted.push({ path, data });
       const discussion = activities.find((item) => path.endsWith(item.id))!;
@@ -1609,7 +1617,12 @@ test("comments can start GitLab-style discussions that are replied to and resolv
     discussion: true,
   });
   const thread = dialog.locator(".discussion");
-  await expect(thread).toContainText("Ana Silva iniciou uma discussão");
+  await expect(thread.locator(".discussion-header")).toContainText(
+    "Ana Silva iniciou uma discussão",
+  );
+  const notes = thread.locator(".discussion-notes > li");
+  await expect(notes).toHaveCount(1);
+  await expect(notes.first()).toContainText("Proprietário");
   await thread.getByRole("button", { name: "Responder…" }).click();
   await expect(
     thread.getByRole("textbox", { name: "Responder à discussão" }),
@@ -1621,24 +1634,53 @@ test("comments can start GitLab-style discussions that are replied to and resolv
     replyTo: "90000000-0000-4000-8000-000000000001",
   });
   expect(posted[1].data.discussion).toBeUndefined();
-  await expect(thread.locator(".discussion-replies li")).toHaveText(
-    /Ana Silva respondeu.*Sim, na versão 17\./,
+  await expect(notes).toHaveCount(2);
+  await expect(notes.nth(1)).toContainText(/Ana Silva.*Sim, na versão 17\./);
+  // Authors edit their own comments in place.
+  await notes.nth(1).getByRole("button", { name: "Editar comentário" }).click();
+  await expect(
+    notes.nth(1).getByRole("textbox", { name: "Editar comentário" }),
+  ).toBeFocused();
+  await page.keyboard.type(" Também no 18.");
+  await notes.nth(1).getByRole("button", { name: "Guardar" }).click();
+  await expect.poll(() => posted.length).toBe(3);
+  expect(posted[2]).toEqual({
+    path: `/suites/${suites[0].id}/comments/90000000-0000-4000-8000-000000000002`,
+    data: { body: "Sim, na versão 17. Também no 18.", mentions: [] },
+  });
+  await expect(notes.nth(1)).toContainText("Também no 18.");
+  await expect(notes.nth(1).locator(".note-edited")).toContainText(
+    "Editado em",
   );
   await thread.getByRole("button", { name: "Resolver discussão" }).click();
   await expect(thread).toContainText("Resolvida por Ana Silva");
-  expect(posted[2]).toEqual({
+  expect(posted[3]).toEqual({
     path: `/suites/${suites[0].id}/discussions/90000000-0000-4000-8000-000000000001`,
     data: { resolved: true },
   });
-  // Resolved discussions fold their replies and can be reopened.
-  await expect(thread.locator(".discussion-replies")).toHaveCount(0);
-  await thread.getByRole("button", { name: "Mostrar 1 resposta" }).click();
-  await expect(thread.locator(".discussion-replies li")).toHaveCount(1);
-  await expect(thread.getByRole("button", { name: "Responder…" })).toHaveCount(
-    0,
-  );
+  // Resolved discussions fold and can be shown again, replied to and reopened.
+  await expect(thread.locator(".discussion-notes")).toHaveCount(0);
+  await thread
+    .getByRole("button", { name: "Mostrar discussão (1 resposta)" })
+    .click();
+  await expect(notes).toHaveCount(2);
+  await expect(thread.getByRole("button", { name: "Responder…" })).toBeVisible();
   await thread.getByRole("button", { name: "Reabrir discussão" }).click();
   await expect(
     thread.getByRole("button", { name: "Resolver discussão" }),
   ).toBeVisible();
+  await thread.getByRole("button", { name: "Ocultar discussão" }).click();
+  await expect(thread.locator(".discussion-notes")).toHaveCount(0);
+  // Reloading the activity keeps the timeline mounted, so the discussion stays folded.
+  await dialog
+    .getByRole("button", { name: "Escolher tipo de comentário" })
+    .click();
+  await page.getByRole("menuitemradio", { name: /Comentário/ }).click();
+  await dialog.getByRole("textbox", { name: "Adicionar comentário" }).click();
+  await page.keyboard.type("Outro comentário");
+  await dialog.getByRole("button", { name: "Comentar" }).click();
+  await expect(dialog.locator(".note-card").last()).toContainText(
+    "Outro comentário",
+  );
+  await expect(thread.locator(".discussion-notes")).toHaveCount(0);
 });

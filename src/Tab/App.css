@@ -1887,92 +1887,168 @@ input[type="checkbox"] {
   border: 1px solid var(--border);
   border-radius: var(--radius-button);
 }
-.timeline-comment > header {
+/* Comments and discussions (GitLab-style threads) */
+.note {
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3);
+}
+.note-main {
+  flex: 1;
+  min-width: 0;
+}
+.note-header {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
-  flex-wrap: wrap;
   gap: 4px var(--space-2);
+  min-height: 28px;
+  font-size: 13px;
+}
+.note-byline {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.note-time,
+.note-edited {
+  color: var(--text-2);
+  font-size: 12px;
+}
+.note-time {
+  white-space: nowrap;
+}
+.timeline-entry .note-time time,
+.timeline-entry .note-edited time {
+  display: inline;
+  margin: 0;
+}
+.note-tools {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+}
+.note-role {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 500;
+}
+.note-body {
+  margin-top: 2px;
+}
+.note-editor {
+  margin-top: var(--space-2);
+}
+.timeline-entry .note-edited {
+  margin-top: var(--space-2);
+}
+.discussion {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-button);
+  background: var(--surface);
+}
+.timeline > li.timeline-flash .discussion {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.discussion-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
   padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid var(--border);
   background: var(--sunken);
   font-size: 13px;
 }
-.timeline-comment > header time {
-  margin: 0;
+.discussion-summary {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  min-width: 0;
+  padding: 4px 0;
 }
-.timeline-comment-body {
-  padding: 10px var(--space-3);
-}
-/* Discussions (GitLab-style threads) */
-.discussion-meta {
-  display: inline-flex;
-  align-items: baseline;
-  gap: var(--space-2);
-}
-.discussion-state,
-.discussion-resolution > span {
-  display: inline-flex;
+.discussion-resolved-by {
+  display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-2);
+}
+.discussion-resolved-by > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.discussion-resolved-by svg {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
   color: var(--pass-fg);
-  font-size: 12px;
+}
+.discussion-resolved-by strong {
+  color: var(--text);
   font-weight: 600;
 }
-.discussion-state svg,
-.discussion-resolution svg {
+.discussion-toggle {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-field);
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.discussion-toggle:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+.discussion-toggle svg {
   width: 14px;
   height: 14px;
 }
-.discussion-replies {
+.discussion-notes {
   margin: 0;
   padding: 0;
   list-style: none;
   border-top: 1px solid var(--border);
 }
-.discussion-replies > li {
-  margin-left: var(--space-4);
-  border-left: 2px solid var(--border);
+.discussion-notes > li {
   transition: background-color 0.9s ease;
 }
-.discussion-replies > li + li {
+.discussion-notes > li + li {
   border-top: 1px solid var(--border);
 }
-.discussion-replies > li.timeline-flash {
+.discussion-notes > li.timeline-flash {
   background-color: var(--accent-soft);
   transition: none;
 }
-.discussion-replies > li > header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 4px var(--space-2);
-  padding: var(--space-2) var(--space-3) 0;
-  font-size: 13px;
-}
-.discussion-replies > li > header time,
-.discussion-resolution time {
-  display: inline;
-  margin: 0;
-}
-.discussion-resolution {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  padding: 6px var(--space-3);
-  border-top: 1px solid var(--border);
-  background: var(--pass-bg);
-}
-.discussion-resolution > span {
-  font-weight: 500;
-}
 .discussion-footer {
-  padding: var(--space-2) var(--space-3);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3);
   border-top: 1px solid var(--border);
   background: var(--sunken);
+}
+.discussion-footer > .user-avatar {
+  margin-top: 0;
+}
+.discussion-footer-main {
+  flex: 1;
+  min-width: 0;
 }
 .discussion-toolbar {
   display: flex;
@@ -1982,7 +2058,7 @@ input[type="checkbox"] {
 .discussion-reply-trigger {
   flex: 1;
   min-width: 0;
-  height: 32px;
+  height: 36px;
   padding: 0 var(--space-3);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-field);
@@ -1997,7 +2073,18 @@ input[type="checkbox"] {
   border-color: var(--accent);
 }
 .discussion-toolbar > .btn {
-  margin-left: auto;
+  flex: 0 0 auto;
+}
+@media (max-width: 420px) {
+  .discussion-header {
+    flex-direction: column;
+  }
+  .discussion-toolbar {
+    flex-wrap: wrap;
+  }
+  .discussion-reply-trigger {
+    flex-basis: 100%;
+  }
 }
 .discussion-count {
   display: inline-flex;

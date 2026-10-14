@@ -116,6 +116,13 @@ export const commentInput = z
     path: ["discussion"],
   });
 export const discussionInput = z.object({ resolved: z.boolean() }).strict();
+/** New text of a comment, edited by its author; attachments stay as they are. */
+export const commentEditInput = z
+  .object({
+    body: z.string().trim().max(50000).default(""),
+    mentions: ids(20),
+  })
+  .strict();
 export const stepResultInput = z.object({ status: stepStatusSchema }).strict();
 export const setupInput = z
   .object({
@@ -429,6 +436,10 @@ export interface Activity {
   detail: Record<string, unknown>;
   createdAt: string;
   attachments: Attachment[];
+  /** Author of the activity; null for integration keys and removed people. */
+  actorId: string | null;
+  /** Set when the author edited the comment. */
+  editedAt: string | null;
   /** First comment of a discussion: it takes replies and can be resolved. */
   discussion: boolean;
   /** The discussion this comment replies to. */

@@ -81,8 +81,10 @@ export function fixtures(): Suite[] {
     };
   });
 }
-/** Discussion fields of an activity that neither starts nor answers a discussion. */
+/** Author and discussion fields of an unedited activity outside any discussion. */
 export const noThread = {
+  actorId: members[0].id,
+  editedAt: null,
   discussion: false,
   replyTo: null,
   resolvedAt: null,

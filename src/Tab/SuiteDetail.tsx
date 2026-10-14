@@ -59,7 +59,7 @@ import {
   assignable,
 } from "./presentation";
 import { DefinitionForm, ResultForm, CommentForm } from "./forms";
-import { DiscussionActions } from "./discussions";
+import { CommentThread } from "./discussions";
 import { Priority } from "./issueUi";
 import { Pagination, pageSizes, usePageSize } from "./pagination";
 export function SuiteDetail({
@@ -1017,7 +1017,7 @@ export function SuiteDetail({
             readOnly={readOnly}
             onSaved={refresh}
             activity={
-              activities.error ? (
+              activities.error && !activities.data ? (
                 <ErrorMessage message={activities.error} />
               ) : activities.loading ? (
                 <Loading />
@@ -1028,20 +1028,27 @@ export function SuiteDetail({
                   )}
                   focusId={focus?.activityId}
                   focusKey={focus}
-                  discussionActions={
-                    readOnly
-                      ? undefined
-                      : (discussion) => (
-                          <DiscussionActions
-                            discussion={discussion}
-                            path={`/tests/${selected.id}/comments`}
-                            resolvePath={`/suites/${suite.id}/discussions/${discussion.id}`}
-                            target={{ suiteId: suite.id, testId: selected.id }}
-                            members={members}
-                            onChanged={refresh}
-                          />
-                        )
-                  }
+                  renderComment={(entry) => (
+                    <CommentThread
+                      entry={entry}
+                      scope={{
+                        projectId: project.id,
+                        members,
+                        userId,
+                        write: readOnly
+                          ? undefined
+                          : {
+                              commentsPath: `/tests/${selected.id}/comments`,
+                              basePath: `/suites/${suite.id}`,
+                              target: {
+                                suiteId: suite.id,
+                                testId: selected.id,
+                              },
+                              onChanged: refresh,
+                            },
+                      }}
+                    />
+                  )}
                 />
               )
             }

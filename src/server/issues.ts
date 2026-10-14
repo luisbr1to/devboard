@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
   commentInput,
+  commentEditInput,
   discussionInput,
   issueArchiveInput,
   issueAssigneesInput,
@@ -34,6 +35,8 @@ import {
   commentDetail,
   digest,
   discussionCounts,
+  editComment,
+  excerpt,
   discussionPeople,
   dto,
   expectVersion,
@@ -1369,6 +1372,39 @@ export function issueRoutes(router: Router, db: Database) {
       return activityId;
     });
     res.status(201).json({ ok: true, id: activityId });
+  });
+  router.patch("/issues/:issueId/comments/:commentId", async (req, res) => {
+    const input = commentEditInput.parse(req.body);
+    const actor = actorOf(res);
+    const issueId = id(req, "issueId");
+    const row = await transaction(db, async (client) => {
+      const { issue } = await issueScope(client, issueId, actor, {
+        write: true,
+        lock: true,
+      });
+      const { row, mentions } = await editComment(
+        client,
+        actor,
+        id(req, "commentId"),
+        input,
+        { column: "issue_id", id: issueId, projectId: issue.project_id },
+      );
+      await notify(
+        client,
+        actor,
+        "issue_mention",
+        {
+          projectId: issue.project_id,
+          issueId,
+          activityId: row.id,
+          detail: { excerpt: excerpt(row.body) },
+        },
+        mentions,
+      );
+      await touch(client, issueId);
+      return row;
+    });
+    res.json(dto(row));
   });
   router.patch(
     "/issues/:issueId/discussions/:discussionId",

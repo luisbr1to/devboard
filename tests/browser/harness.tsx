@@ -66,6 +66,8 @@ function Harness() {
             project={selectedProject}
             suiteId={suiteId}
             members={members}
+            // As a member, the signed-in person is not Ana Silva (the test assignee).
+            userId={params.get("role") === "member" ? undefined : members[0].id}
             revision={revision}
             refresh={() => setRevision((value) => value + 1)}
             navigate={(id) => setSuiteId(id || "")}

@@ -13,7 +13,7 @@ import {
   type OverflowAction,
 } from "./components";
 import { CommentForm } from "./forms";
-import { DiscussionActions } from "./discussions";
+import { CommentThread } from "./discussions";
 import { assignable, day, issueKey } from "./presentation";
 import {
   dayText,
@@ -115,7 +115,7 @@ export function IssuePanel({
       case "issue_status_changed":
         return `mudou o estado de «${detail.from}» para «${detail.to}»`;
       case "issue_assigned": {
-        const actorId = (item as Activity & { actorId?: string }).actorId;
+        const actorId = item.actorId;
         const added: string[] = detail.added || [];
         const removed: string[] = detail.removed || [];
         if (added.length === 1 && added[0] === actorId && !removed.length)
@@ -367,7 +367,7 @@ export function IssuePanel({
           )}
           <section className="drawer-section">
             <h3 className="section-label">Atividade</h3>
-            {activity.error ? (
+            {activity.error && !activity.data ? (
               <ErrorMessage message={activity.error} />
             ) : !activity.data ? (
               <Loading />
@@ -377,23 +377,27 @@ export function IssuePanel({
                 describe={describe}
                 focusId={focusActivity}
                 focusKey={focusKey}
-                discussionActions={
-                  readOnly
-                    ? undefined
-                    : (discussion) => (
-                        <DiscussionActions
-                          discussion={discussion}
-                          path={`/issues/${issue.id}/comments`}
-                          resolvePath={`/issues/${issue.id}/discussions/${discussion.id}`}
-                          target={{ issueId: issue.id }}
-                          members={members}
-                          onChanged={() => {
-                            setLocal((value) => value + 1);
-                            onChanged();
-                          }}
-                        />
-                      )
-                }
+                renderComment={(entry) => (
+                  <CommentThread
+                    entry={entry}
+                    scope={{
+                      projectId: issue.projectId,
+                      members,
+                      userId,
+                      write: readOnly
+                        ? undefined
+                        : {
+                            commentsPath: `/issues/${issue.id}/comments`,
+                            basePath: `/issues/${issue.id}`,
+                            target: { issueId: issue.id },
+                            onChanged: () => {
+                              setLocal((value) => value + 1);
+                              onChanged();
+                            },
+                          },
+                    }}
+                  />
+                )}
               />
             )}
           </section>

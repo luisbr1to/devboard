@@ -7,6 +7,7 @@ import {
   suiteEditInput,
   testInput,
   commentInput,
+  commentEditInput,
   discussionInput,
   memberInput,
   memberRoleInput,
@@ -286,6 +287,12 @@ operation(
 );
 operation("/suites/{suiteId}/comments", "post", "Comentar suite", commentInput);
 operation(
+  "/suites/{suiteId}/comments/{commentId}",
+  "patch",
+  "Editar um comentário da suite ou de um dos seus testes (só o autor); os anexos mantêm-se",
+  commentEditInput,
+);
+operation(
   "/suites/{suiteId}/discussions/{discussionId}",
   "patch",
   "Resolver ou reabrir uma discussão da suite ou de um dos seus testes",
@@ -463,6 +470,12 @@ operation(
   "post",
   "Comentar issue; discussion abre uma discussão e replyTo responde a uma",
   commentInput,
+);
+operation(
+  "/issues/{issueId}/comments/{commentId}",
+  "patch",
+  "Editar um comentário do issue (só o autor); os anexos mantêm-se",
+  commentEditInput,
 );
 operation(
   "/issues/{issueId}/discussions/{discussionId}",
