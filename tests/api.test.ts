@@ -2678,6 +2678,21 @@ test("issues: spreadsheet import maps people and values, is atomic, retry-safe a
     again.skipped.map((item: any) => item.externalRef),
     ["1", "2"],
   );
+  // Deleted issues no longer count as imported, so a corrected sheet can be imported again.
+  const imported = (
+    await call("get", `/projects/${project.id}/issues?sort=number`)
+  ).body.items;
+  await call("post", `/projects/${project.id}/issues/delete`, "owner", {
+    issues: imported
+      .filter((item: any) => item.externalRef === "2")
+      .map((item: any) => ({ id: item.id, version: item.version })),
+  }).expect(200);
+  const reimport = (await send(payload, "import-3").expect(201)).body;
+  assert.equal(reimport.created, 1);
+  assert.deepEqual(
+    reimport.skipped.map((item: any) => item.externalRef),
+    ["1"],
+  );
   const list = (await call("get", `/projects/${project.id}/issues?sort=number`))
     .body.items;
   const [second, first] = list;

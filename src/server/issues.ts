@@ -1562,7 +1562,7 @@ export function issueRoutes(router: Router, db: Database) {
       const seen = new Set(
         (
           await client.query(
-            "SELECT external_ref FROM issues WHERE project_id=$1 AND external_ref IS NOT NULL",
+            "SELECT external_ref FROM issues WHERE project_id=$1 AND external_ref IS NOT NULL AND deleted_at IS NULL",
             [projectId],
           )
         ).rows.map((row) => row.external_ref as string),
