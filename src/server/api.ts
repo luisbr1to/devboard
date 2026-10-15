@@ -1028,13 +1028,16 @@ export function createApi(
     const token = req.get("Authorization")?.match(/^Bearer (\S+)$/i)?.[1];
     if (!token) throw new HttpError(401, "Inicie sessão para continuar.");
     if (token.startsWith("th_")) {
-      if (
-        req.method !== "POST" ||
-        !/^\/projects\/[\da-f-]{36}\/suites$/i.test(req.path)
-      )
+      // Keys publish suites, and read or edit (title, description) suites of their project.
+      if (!(
+        (req.method === "POST" &&
+          /^\/projects\/[\da-f-]{36}\/suites$/i.test(req.path)) ||
+        ((req.method === "GET" || req.method === "PATCH") &&
+          /^\/suites\/[\da-f-]{36}$/i.test(req.path))
+      ))
         throw new HttpError(
           403,
-          "Esta chave só permite publicar suites no seu projeto.",
+          "Esta chave só permite publicar, consultar e editar suites no seu projeto.",
         );
       const key = (
         await db.query(

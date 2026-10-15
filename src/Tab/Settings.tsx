@@ -230,7 +230,9 @@ export function Settings({
               <h2 className="card-title">Publicação por IA</h2>
               <p>
                 Publique suites em JSON com descrições em Markdown. Os testes
-                são criados pendentes.
+                são criados pendentes. A mesma chave lê e edita o título e a
+                descrição das suites do projeto (<code>GET</code>/
+                <code>PATCH /api/v1/suites/…</code> com <code>If-Match</code>).
               </p>
               <code className="endpoint">
                 POST /api/v1/projects/{project.id}/suites

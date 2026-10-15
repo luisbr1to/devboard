@@ -18,7 +18,7 @@ React 19 + Fluent UI v9 inside a Microsoft Teams tab at `/tabs/home/`. Express A
 - Owners manage membership, keys and archival. Archived suites/projects are read-only; restoration preserves history. No permanent deletion, except issues in projects created with issue soft delete turned off (chosen at creation, never changed).
 - Editing instructions or expected results resets a test to pending and requires UI confirmation when replacing a recorded result.
 - Never infer identity or authorization from Teams context or client-supplied display names. Verify Entra JWTs and enforce membership on every resource request.
-- Publishing keys can only create suites in their project. Store hashes, expose secrets once, and require idempotency keys.
+- Publishing keys can only create suites in their project and read or edit (title, description) suites of that project. Store hashes, expose secrets once, and require idempotency keys.
 
 ## Commands and checks
 

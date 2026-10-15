@@ -880,6 +880,46 @@ test("AI imports are atomic, pending, attributed, scoped, hashed and retry-safe"
     .set("Idempotency-Key", "pipeline-123")
     .expect(409);
   await call("get", `/projects/${project.id}/suites`, key.secret).expect(403);
+  // Keys read and edit the title and description of suites in their project.
+  const read = (
+    await call("get", `/suites/${created.id}`, key.secret).expect(200)
+  ).body;
+  await call("patch", `/suites/${created.id}`, key.secret, {
+    title: "Suite revista",
+    description: "# Revista",
+  }).expect(428);
+  const edited = (
+    await call(
+      "patch",
+      `/suites/${created.id}`,
+      key.secret,
+      { title: "Suite revista", description: "# Revista" },
+      read.version,
+    ).expect(200)
+  ).body;
+  assert.equal(edited.title, "Suite revista");
+  assert.equal(edited.description, "# Revista");
+  await call(
+    "patch",
+    `/suites/${created.id}`,
+    key.secret,
+    { title: "Outra vez" },
+    read.version,
+  ).expect(409);
+  const history = (await call("get", `/suites/${created.id}/activity`)).body;
+  assert.equal(
+    history.find((item: any) => item.kind === "suite_edited").actorName,
+    "Integração: Pipeline IA",
+  );
+  await call("get", `/suites/${created.id}/activity`, key.secret).expect(403);
+  await call(
+    "patch",
+    `/tests/${created.tests[0].id}`,
+    key.secret,
+    { title: "x", instructions: "", expectedResult: "" },
+    1,
+  ).expect(403);
+  await call("delete", `/suites/${created.id}`, key.secret).expect(403);
   await call(
     "post",
     `/tests/${created.tests[0].id}/result`,
@@ -891,6 +931,19 @@ test("AI imports are atomic, pending, attributed, scoped, hashed and retry-safe"
   await call("post", `/projects/${another.id}/suites`, key.secret, payload)
     .set("Idempotency-Key", "cross-project")
     .expect(403);
+  const foreign = (
+    await call("post", `/projects/${another.id}/suites`, "admin", {
+      title: "Alheia",
+    }).expect(201)
+  ).body;
+  await call("get", `/suites/${foreign.id}`, key.secret).expect(403);
+  await call(
+    "patch",
+    `/suites/${foreign.id}`,
+    key.secret,
+    { title: "Invadida" },
+    foreign.version,
+  ).expect(403);
   const byEmail = (
     await call("post", `/projects/${project.id}/suites`, key.secret, {
       ...payload,

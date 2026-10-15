@@ -228,7 +228,7 @@ Atualize a URI Entra, o callback e o manifesto quando mudar o domínio/ambiente.
 
 ## Publicação de suites geradas por IA
 
-Crie projeto → Definições → Publicação por IA → Criar chave. Guarde-a quando for apresentada; não será recuperável. A chave só permite criar suites nesse projeto.
+Crie projeto → Definições → Publicação por IA → Criar chave. Guarde-a quando for apresentada; não será recuperável. A chave só permite criar suites nesse projeto e consultar ou editar o título e a descrição das suites desse projeto.
 
 Adapte o seu prompt/script para gerar [examples/suite.json](examples/suite.json). Cada teste tem título, instruções Markdown, `steps` opcionais (lista de textos), resultado esperado `priority` opcional (inteiro de 1 = Crítica a 5 = Mínima, ou `null`) e `modules` opcional (até 20 nomes de módulos do projeto: um nome existente é reconhecido sem distinguir maiúsculas nem acentos e os que não existem são criados; `moduleIds` aceita os ids); sem `steps`, a primeira lista das instruções é convertida em passos. `assigneeId` é opcional e deve corresponder a um membro local do projeto; em alternativa, `assigneeEmail` (nunca os dois) é resolvido pelo servidor para o membro do projeto com esse email, e a publicação é recusada se não existir. O criador da suite é sempre o autor verificado (`Integração: <nome da chave>`), nunca um valor enviado pelo cliente. Não envie estados/resultados: os testes começam pendentes.
 
@@ -242,6 +242,8 @@ npm run publish:suite -- examples/suite.json PROJECT_ID pipeline-commit-suite-00
 Envie `POST /api/v1/projects/PROJECT_ID/suites` com `Authorization: Bearer CHAVE`, `Content-Type: application/json` e `Idempotency-Key`.
 
 Reutilize a chave de idempotência para repetir a **mesma** publicação: o servidor devolve a suite existente. Conteúdo diferente com a mesma chave devolve 409. Use uma nova chave para uma suite independente. A publicação é transacional; não ficam suites parciais se algum teste for inválido.
+
+Para corrigir uma suite já publicada, a mesma chave lê-a com `GET /api/v1/suites/SUITE_ID` e edita o título e a descrição com `PATCH /api/v1/suites/SUITE_ID`, enviando `{"title": "…", "description": "…"}` e `If-Match` com a `version` lida. Uma versão desatualizada devolve 409; suites arquivadas são só de leitura. A edição fica no histórico como `Integração: <nome da chave>` e notifica os responsáveis e testers da suite, como uma edição feita na aplicação. Os testes da suite não podem ser alterados com a chave.
 
 A skill [`pending-qa-suite`](integrations/skills/pending-qa-suite/SKILL.md) (Claude Code e Codex) usa esta API para criar, no repositório da aplicação a libertar, uma suite com os testes manuais do que está em `master` e ainda não foi para produção. Para a instalar, copie a pasta para `~/.claude/skills/` e `~/.codex/skills/` e defina `TESTHUB_URL`, `TESTHUB_API_KEY` e `TESTHUB_PROJECT_ID`. O responsável é o email git do utilizador ou o indicado em `--email=…`.
 

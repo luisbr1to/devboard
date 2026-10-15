@@ -36,6 +36,7 @@ Estados: **Implementado** = código entregue; **Validado localmente** = verifica
 | TH-026 | P1         | TH-019, TH-007 | Validado localmente              | Módulos nos testes (coluna, filtro, formulário, publicação por nome) e colunas configuráveis      |
 | TH-027 | P2         | TH-003         | Validado localmente              | Cor do avatar escolhida por cada pessoa na barra lateral e vista por toda a equipa               |
 | TH-028 | P1         | TH-019         | Validado localmente              | Eliminação lógica de issues escolhida ao criar o projeto; sem ela, apagar remove definitivamente e liberta números |
+| TH-029 | P1         | TH-009         | Validado localmente              | Chaves de integração consultam e editam título e descrição das suites do seu projeto (`GET`/`PATCH /suites/:id`, `If-Match`) |
 
 ## Evoluções possíveis
 
@@ -93,6 +94,8 @@ Em 14 de outubro de 2026 (módulos nos testes): `typecheck`, `build`, 59 testes 
 Em 14 de outubro de 2026 (cor do avatar): `typecheck`, `build`, 60 testes de API/runtime em três execuções seguidas (1 novo: `PUT /me/avatar-color` aceita só `#rrggbb`, guarda em minúsculas, aparece em `/me` e na lista de membros, `null` repõe a predefinida) e 17 testes rápidos Playwright (1 novo: o avatar da barra lateral abre o seletor, as cores sugeridas e a personalizada são guardadas, as iniciais ficam brancas ou escuras conforme o fundo, e «Repor predefinida»). As 12 cores sugeridas têm contraste de pelo menos 4,5:1 com as iniciais. A migração aditiva `016_avatar_colors.sql` (tal como `013` a `015`) ainda não foi aplicada à base de desenvolvimento `testhub`.
 
 Em 14 de outubro de 2026 (eliminação de issues configurável): `typecheck` e 61 testes de API/runtime (1 novo: projeto sem eliminação lógica apaga issues individualmente e em lote com comentários, responsáveis e notificações, avisa os responsáveis sem link e volta a usar o número; o teste de importação passa a cobrir reimportar depois de apagar). As migrações `017_reimport_deleted_issues.sql` e `018_issue_soft_delete_option.sql` foram aplicadas à base de desenvolvimento `testhub`. Os testes rápidos Playwright e os cenários end-to-end Docker não correram nesta revisão.
+
+Em 15 de outubro de 2026 (edição de suites por chave): `typecheck` e 61 testes de API/runtime (o teste das chaves de integração passa a cobrir leitura e edição do título e da descrição com `If-Match`, recusa sem versão ou com versão desatualizada, autoria `Integração: <nome>` no histórico, e recusa de outras rotas e de suites de outros projetos). Os testes rápidos Playwright e os cenários end-to-end Docker não correram nesta revisão.
 
 Não foram fornecidas credenciais Entra para a aceitação real. Não foram criados recursos cloud nem publicados pacotes Teams. Uma eventual implantação alojada terá de fornecer o seu próprio PostgreSQL e validar as migrações nesse ambiente. Atualizar este registo com os resultados efetivamente obtidos.
 
