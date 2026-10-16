@@ -2029,11 +2029,6 @@ input[type="checkbox"] {
   padding: 0 7px;
   font-size: 12px;
 }
-.timeline-comment {
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-button);
-}
 /* Comments and discussions (GitLab-style threads) */
 .note {
   display: flex;
@@ -2096,13 +2091,16 @@ input[type="checkbox"] {
 .timeline-entry .note-edited {
   margin-top: var(--space-2);
 }
-.discussion {
+/* A plain comment is a discussion card without the toggle and the reply footer. */
+.discussion,
+.timeline-comment {
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: var(--radius-button);
   background: var(--surface);
 }
-.timeline > li.timeline-flash .discussion {
+.timeline > li.timeline-flash .discussion,
+.timeline > li.timeline-flash .timeline-comment {
   border-color: color-mix(in srgb, var(--accent) 45%, transparent);
 }
 .discussion-header {
@@ -2748,9 +2746,6 @@ input[type="checkbox"] {
   background-color: var(--accent-soft);
   box-shadow: 0 0 0 6px var(--accent-soft);
   transition: none;
-}
-.timeline > li.timeline-flash .timeline-comment {
-  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
 }
 .timeline > li .timeline-dot {
   transition: background-color 0.9s ease;

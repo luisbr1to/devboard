@@ -929,6 +929,231 @@ test("AI imports are atomic, pending, attributed, scoped, hashed and retry-safe"
     .set("Idempotency-Key", "new")
     .expect(401);
 });
+test("manage keys read and edit suites and tests of their project only", async () => {
+  const { project, suite, memberId } = await fixture();
+  const publish = (
+    await call("post", `/projects/${project.id}/keys`, "owner", {
+      name: "Só publica",
+    }).expect(201)
+  ).body;
+  const manage = (
+    await call("post", `/projects/${project.id}/keys`, "owner", {
+      name: "Agente QA",
+      scope: "manage",
+    }).expect(201)
+  ).body;
+  await call("post", `/projects/${project.id}/keys`, "owner", {
+    name: "Errada",
+    scope: "admin",
+  }).expect(400);
+  assert.deepEqual(
+    (await call("get", `/projects/${project.id}/keys`)).body
+      .map((key: any) => [key.name, key.scope])
+      .sort(),
+    [
+      ["Agente QA", "manage"],
+      ["Só publica", "publish"],
+    ],
+  );
+  // A publishing key still only publishes.
+  await call("get", `/suites/${suite.id}`, publish.secret).expect(403);
+  await call(
+    "patch",
+    `/suites/${suite.id}`,
+    publish.secret,
+    { title: "X", description: "" },
+    suite.version,
+  ).expect(403);
+  const listed = (
+    await call("get", `/projects/${project.id}/suites`, manage.secret).expect(
+      200,
+    )
+  ).body;
+  assert.deepEqual(
+    listed.items.map((item: any) => item.id),
+    [suite.id],
+  );
+  let current = (
+    await call("get", `/suites/${suite.id}`, manage.secret).expect(200)
+  ).body;
+  current = (
+    await call(
+      "patch",
+      `/suites/${suite.id}`,
+      manage.secret,
+      { title: "Pagamentos v2", description: "Revista" },
+      current.version,
+    ).expect(200)
+  ).body;
+  assert.equal(current.title, "Pagamentos v2");
+  // New tests may name their assignee by email and their modules by name.
+  const added = (
+    await call(
+      "post",
+      `/suites/${suite.id}/tests`,
+      manage.secret,
+      {
+        title: "MB Way",
+        instructions: "1. Pagar com MB Way",
+        expectedResult: "Pagamento aceite",
+        assigneeEmail: identities.member.email,
+        modules: ["Pagamentos"],
+      },
+      current.version,
+    ).expect(201)
+  ).body;
+  assert.equal(added.assigneeId, memberId);
+  current = (await call("get", `/suites/${suite.id}`, manage.secret)).body;
+  const withModule = current.tests.find((test: any) => test.id === added.id);
+  assert.equal(withModule.moduleIds.length, 1);
+  // A retry with the old suite version is refused instead of adding it twice.
+  await call(
+    "post",
+    `/suites/${suite.id}/tests`,
+    manage.secret,
+    { title: "MB Way", instructions: "", expectedResult: "" },
+    current.version - 1,
+  ).expect(409);
+  // Replacing a recorded result needs explicit confirmation from a key.
+  const [first] = current.tests;
+  const approved = (
+    await call(
+      "post",
+      `/tests/${first.id}/result`,
+      "member",
+      { status: "approved" },
+      first.version,
+    ).expect(200)
+  ).body;
+  const edit = {
+    title: first.title,
+    instructions: "1. Abrir checkout novo",
+    expectedResult: first.expectedResult,
+  };
+  await call(
+    "patch",
+    `/tests/${first.id}`,
+    manage.secret,
+    edit,
+    approved.version,
+  ).expect(409);
+  const retitled = (
+    await call(
+      "patch",
+      `/tests/${first.id}`,
+      manage.secret,
+      { ...edit, instructions: first.instructions, title: "Cartão Visa" },
+      approved.version,
+    ).expect(200)
+  ).body;
+  assert.equal(retitled.status, "approved");
+  const reset = (
+    await call(
+      "patch",
+      `/tests/${first.id}`,
+      manage.secret,
+      { ...edit, title: "Cartão Visa", confirmReset: true, assigneeId: null },
+      retitled.version,
+    ).expect(200)
+  ).body;
+  assert.equal(reset.status, "pending");
+  assert.equal(reset.assigneeId, null);
+  const reassigned = (
+    await call(
+      "patch",
+      `/tests/${first.id}`,
+      manage.secret,
+      { ...edit, title: "Cartão Visa", assigneeEmail: identities.member.email },
+      reset.version,
+    ).expect(200)
+  ).body;
+  assert.equal(reassigned.assigneeId, memberId);
+  // Deletion stays logical and is attributed to the key.
+  await call(
+    "delete",
+    `/tests/${added.id}`,
+    manage.secret,
+    undefined,
+    added.version - 1,
+  ).expect(409);
+  await call(
+    "delete",
+    `/tests/${added.id}`,
+    manage.secret,
+    undefined,
+    added.version,
+  ).expect(204);
+  const deleted = await db.query(
+    "SELECT deleted_at,deleted_by FROM tests WHERE id=$1",
+    [added.id],
+  );
+  assert.ok(deleted.rows[0].deleted_at);
+  assert.equal(deleted.rows[0].deleted_by, null);
+  const history = (
+    await call("get", `/suites/${suite.id}/activity`).expect(200)
+  ).body.filter((item: any) => item.actorName === "Integração: Agente QA");
+  assert.deepEqual(
+    history.map((item: any) => item.kind),
+    [
+      "suite_edited",
+      "test_created",
+      "test_edited",
+      "test_edited",
+      "assignment_changed",
+      "assignment_changed",
+      "test_deleted",
+    ],
+  );
+  // Still no results, suite deletion, archival or other projects.
+  current = (await call("get", `/suites/${suite.id}`, manage.secret)).body;
+  await call(
+    "post",
+    `/tests/${first.id}/result`,
+    manage.secret,
+    { status: "approved" },
+    current.tests[0].version,
+  ).expect(403);
+  await call(
+    "delete",
+    `/suites/${suite.id}`,
+    manage.secret,
+    undefined,
+    current.version,
+  ).expect(403);
+  await call(
+    "post",
+    `/suites/${suite.id}/archive`,
+    manage.secret,
+    undefined,
+    current.version,
+  ).expect(403);
+  await call("get", `/projects/${project.id}/members`, manage.secret).expect(
+    403,
+  );
+  const another = await createProject({ name: "Outro" });
+  const foreign = (
+    await call("post", `/projects/${another.id}/suites`, "owner", {
+      title: "Alheia",
+      description: "",
+      tests: [{ title: "T", instructions: "", expectedResult: "" }],
+    }).expect(201)
+  ).body;
+  await call("get", `/suites/${foreign.id}`, manage.secret).expect(403);
+  await call("get", `/projects/${another.id}/suites`, manage.secret).expect(
+    403,
+  );
+  await call(
+    "delete",
+    `/tests/${foreign.tests[0].id}`,
+    manage.secret,
+    undefined,
+    foreign.tests[0].version,
+  ).expect(403);
+  await call("post", `/projects/${project.id}/keys/${manage.id}/revoke`).expect(
+    200,
+  );
+  await call("get", `/suites/${suite.id}`, manage.secret).expect(401);
+});
 test("suite search, status, assignee and archive filters agree with pagination", async () => {
   const { project, suite, memberId } = await fixture();
   await call("post", `/projects/${project.id}/suites`, "owner", {

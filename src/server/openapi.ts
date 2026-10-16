@@ -5,7 +5,8 @@ import {
   setupInput,
   suiteInput,
   suiteEditInput,
-  testInput,
+  suiteTestInput,
+  testEditInput,
   commentInput,
   commentEditInput,
   discussionInput,
@@ -184,7 +185,7 @@ operation(
 operation(
   "/projects/{projectId}/suites",
   "get",
-  "Listar suites com contagens e progresso",
+  "Listar suites com contagens e progresso (utilizador ou chave com edição)",
 );
 (
   paths["/projects/{projectId}/suites"].get as Record<string, any>
@@ -229,11 +230,15 @@ operation(
   false,
   true,
 );
-operation("/suites/{suiteId}", "get", "Suite, testes e resumo derivado");
+operation(
+  "/suites/{suiteId}",
+  "get",
+  "Suite, testes e resumo derivado (utilizador ou chave com edição)",
+);
 operation(
   "/suites/{suiteId}",
   "patch",
-  "Editar título e descrição",
+  "Editar título e descrição (utilizador ou chave com edição)",
   suiteEditInput,
   true,
 );
@@ -265,15 +270,22 @@ for (const action of ["archive", "restore"])
 operation(
   "/suites/{suiteId}/tests",
   "post",
-  "Adicionar teste",
-  testInput,
+  "Adicionar teste (utilizador ou chave com edição); responsável por assigneeId ou assigneeEmail, módulos por moduleIds ou nomes em modules",
+  suiteTestInput,
   true,
 );
 operation(
   "/tests/{testId}",
   "patch",
-  "Editar, atribuir ou ordenar teste; mudanças das instruções/resultado esperado repõem pendente",
-  testInput.extend({ position: z.number().int().min(0).max(10000).optional() }),
+  "Editar, atribuir ou ordenar teste (utilizador ou chave com edição); mudanças das instruções, passos ou resultado esperado repõem pendente, e uma chave tem de enviar confirmReset: true para substituir um resultado registado",
+  testEditInput,
+  true,
+);
+operation(
+  "/tests/{testId}",
+  "delete",
+  "Apagar logicamente um teste (proprietário, responsável do teste ou chave com edição)",
+  undefined,
   true,
 );
 operation(
@@ -313,7 +325,7 @@ operation(
 operation(
   "/projects/{projectId}/keys",
   "post",
-  "Criar chave; segredo apresentado uma única vez",
+  "Criar chave; scope publish só publica suites, manage também lê e edita suites e testes do projeto; segredo apresentado uma única vez",
   keyInput,
 );
 operation(
@@ -510,7 +522,8 @@ export const openapi = {
       bearerAuth: {
         type: "http",
         scheme: "bearer",
-        description: "Token Microsoft Entra ou chave de publicação th_.",
+        description:
+          "Token Microsoft Entra ou chave de integração th_ (publicação, ou publicação e edição).",
       },
     },
   },

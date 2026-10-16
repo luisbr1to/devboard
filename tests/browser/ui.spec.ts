@@ -1704,6 +1704,13 @@ test("comments can start GitLab-style discussions that are replied to and resolv
   await expect(dialog.locator(".note-card").last()).toContainText(
     "Outro comentário",
   );
+  // A plain comment is the same card, with a header but no toggle or reply field.
+  const comment = dialog.locator(".note-card").last();
+  await expect(comment.locator(".discussion-header")).toContainText(
+    "Ana Silva comentou",
+  );
+  await expect(comment.locator(".discussion-toggle")).toHaveCount(0);
+  await expect(comment.locator(".discussion-footer")).toHaveCount(0);
   await expect(thread.locator(".discussion-notes")).toHaveCount(0);
 });
 

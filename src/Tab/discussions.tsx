@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import {
   ArrowPathIcon,
   CheckCircleIcon,
@@ -125,16 +125,7 @@ function CommentEditor({
   );
 }
 /** One comment with its author's avatar; the author edits it in place. */
-function Note({
-  item,
-  scope,
-  lead,
-}: {
-  item: Activity;
-  scope: CommentScope;
-  /** Text after the author's name (e.g. "comentou em TC-2"). */
-  lead?: ReactNode;
-}) {
+function Note({ item, scope }: { item: Activity; scope: CommentScope }) {
   const [editing, setEditing] = useState(false);
   const role = scope.members.find((person) => person.id === item.actorId)?.role;
   const write = scope.write;
@@ -146,7 +137,6 @@ function Note({
         <header className="note-header">
           <span className="note-byline">
             <strong>{item.actorName}</strong>
-            {lead && <> {lead}</>}
             <span className="note-time">
               {" · "}
               <time className="mono" dateTime={item.createdAt}>
@@ -195,6 +185,29 @@ function Note({
         )}
       </div>
     </div>
+  );
+}
+/** Header line of a comment or discussion card: who did what, where and when. */
+function ThreadSummary({
+  item,
+  action,
+  context,
+}: {
+  item: Activity;
+  action: string;
+  context: string | null;
+}) {
+  return (
+    <p>
+      <strong>{item.actorName}</strong> {action}
+      {context && <> em {context}</>}
+      <span className="note-time">
+        {" · "}
+        <time className="mono" dateTime={item.createdAt}>
+          {date(item.createdAt)}
+        </time>
+      </span>
+    </p>
   );
 }
 /** Reply field and resolve button closing a discussion, as in GitLab threads. */
@@ -296,16 +309,11 @@ function Discussion({
     <article className={`discussion${resolved ? " discussion-resolved" : ""}`}>
       <header className="discussion-header">
         <div className="discussion-summary">
-          <p>
-            <strong>{root.actorName}</strong> iniciou uma discussão
-            {context && <> em {context}</>}
-            <span className="note-time">
-              {" · "}
-              <time className="mono" dateTime={root.createdAt}>
-                {date(root.createdAt)}
-              </time>
-            </span>
-          </p>
+          <ThreadSummary
+            item={root}
+            action="iniciou uma discussão"
+            context={context}
+          />
           {resolved && (
             <p className="discussion-resolved-by">
               <CheckCircleSolidIcon aria-hidden />
@@ -385,16 +393,20 @@ export function CommentThread({
     />
   ) : (
     <article className="timeline-comment note-card">
-      <Note
-        item={item}
-        scope={scope}
-        lead={
-          <>
-            {item.replyTo ? "respondeu a uma discussão" : "comentou"}
-            {context && <> em {context}</>}
-          </>
-        }
-      />
+      <header className="discussion-header">
+        <div className="discussion-summary">
+          <ThreadSummary
+            item={item}
+            action={item.replyTo ? "respondeu a uma discussão" : "comentou"}
+            context={context}
+          />
+        </div>
+      </header>
+      <ol className="discussion-notes">
+        <li>
+          <Note item={item} scope={scope} />
+        </li>
+      </ol>
     </article>
   );
 }

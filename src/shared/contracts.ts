@@ -62,16 +62,29 @@ export const testInput = z
   .strict();
 /** Module names: published tests may name modules; missing ones are created. */
 const moduleName = z.string().trim().min(1).max(60);
-/** Suite creation may assign by email and name modules; the server resolves both. */
-export const suiteTestInput = testInput
-  .extend({
-    assigneeEmail: z.string().trim().email().max(320).optional(),
-    modules: z.array(moduleName).max(20).optional(),
-  })
-  .refine((data) => !(data.assigneeEmail && data.assigneeId), {
+/** Tests may also be assigned by email and name modules; the server resolves both. */
+const namedTestInput = testInput.extend({
+  assigneeEmail: z.string().trim().email().max(320).optional(),
+  modules: z.array(moduleName).max(20).optional(),
+});
+const oneAssignee: [
+  (data: { assigneeEmail?: string; assigneeId?: string | null }) => boolean,
+  { message: string; path: string[] },
+] = [
+  (data) => !(data.assigneeEmail && data.assigneeId),
+  {
     message: "Indique assigneeId ou assigneeEmail, não ambos.",
     path: ["assigneeEmail"],
-  });
+  },
+];
+export const suiteTestInput = namedTestInput.refine(...oneAssignee);
+export const testEditInput = namedTestInput
+  .extend({
+    position: z.number().int().min(0).max(10000).optional(),
+    /** A key must confirm an edit that replaces a recorded result with pending. */
+    confirmReset: z.boolean().optional(),
+  })
+  .refine(...oneAssignee);
 export const suiteInput = z
   .object({
     title,
@@ -165,7 +178,12 @@ export const memberBlockInput = z
     until: z.string().datetime({ offset: true }).nullable().default(null),
   })
   .strict();
-export const keyInput = z.object({ name: title }).strict();
+/** publish: only creates suites; manage: also reads and edits the project's suites and tests. */
+export const keyScopes = ["publish", "manage"] as const;
+export type KeyScope = (typeof keyScopes)[number];
+export const keyInput = z
+  .object({ name: title, scope: z.enum(keyScopes).default("publish") })
+  .strict();
 
 /* Development area: issues with configurable statuses, modules and labels. */
 export const issueColors = [
@@ -625,6 +643,7 @@ export interface IssueImportResult {
 export interface IntegrationKey {
   id: string;
   name: string;
+  scope: KeyScope;
   createdAt: string;
   revokedAt: string | null;
 }

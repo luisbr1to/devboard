@@ -18,7 +18,8 @@ import {
   suiteInput,
   suiteEditInput,
   suiteSelectionInput,
-  testInput,
+  suiteTestInput,
+  testEditInput,
   resultInput,
   commentInput,
   commentEditInput,
@@ -32,6 +33,7 @@ import {
   memberBlockInput,
   keyInput,
   summarize,
+  type KeyScope,
   multiFilter,
   statusSchema,
   type Suite,
@@ -67,6 +69,19 @@ export const activeMember =
 export const assignableMember = `m.role <> 'viewer'`;
 export const digest = (value: string) =>
   createHash("sha256").update(value).digest("hex");
+/** What each key scope may call; projectScope then limits it to the key's project. */
+const uuidPath = "[\\da-f-]{36}";
+const publishRoute = new RegExp(`^POST /projects/${uuidPath}/suites$`, "i");
+const keyRoutes: Record<KeyScope, RegExp[]> = {
+  publish: [publishRoute],
+  manage: [
+    publishRoute,
+    new RegExp(`^GET /projects/${uuidPath}/suites$`, "i"),
+    new RegExp(`^(GET|PATCH) /suites/${uuidPath}$`, "i"),
+    new RegExp(`^POST /suites/${uuidPath}/tests$`, "i"),
+    new RegExp(`^(PATCH|DELETE) /tests/${uuidPath}$`, "i"),
+  ],
+};
 const loopback = (address?: string) =>
   address === "127.0.0.1" ||
   address === "::1" ||
@@ -585,6 +600,34 @@ async function modulesByName(
   }
   return ids;
 }
+/**
+ * Assignee and modules of a test, given by id or by email and module names (missing
+ * modules are created). Undefined when the input names none, so an edit keeps them.
+ */
+async function testRefs(
+  db: Connection,
+  projectId: string,
+  test: {
+    assigneeId?: string | null;
+    assigneeEmail?: string;
+    moduleIds?: string[];
+    modules?: string[];
+  },
+) {
+  const assigneeId = test.assigneeEmail
+    ? await assigneeByEmail(db, projectId, test.assigneeEmail)
+    : test.assigneeId;
+  const moduleIds =
+    test.moduleIds || test.modules
+      ? [
+          ...new Set([
+            ...(test.moduleIds ?? []),
+            ...(await modulesByName(db, projectId, test.modules ?? [])),
+          ]),
+        ]
+      : undefined;
+  return { assigneeId, moduleIds };
+}
 async function setTestModules(db: Connection, testId: string, ids: string[]) {
   await db.query("DELETE FROM test_module_links WHERE test_id=$1", [testId]);
   for (const moduleId of new Set(ids))
@@ -785,9 +828,8 @@ async function newSuite(
   );
   const activityId = await event(db, suiteId, actor, "suite_created");
   for (const [position, test] of input.tests.entries()) {
-    const assigneeId = test.assigneeEmail
-      ? await assigneeByEmail(db, projectId, test.assigneeEmail)
-      : test.assigneeId;
+    const refs = await testRefs(db, projectId, test);
+    const assigneeId = refs.assigneeId;
     await assigned(db, projectId, assigneeId);
     const testId = randomUUID();
     const { instructions, steps } = definition(test);
@@ -806,11 +848,8 @@ async function newSuite(
       ],
     );
     await insertSteps(db, testId, steps);
-    const moduleIds = [
-      ...(test.moduleIds ?? []),
-      ...(await modulesByName(db, projectId, test.modules ?? [])),
-    ];
-    await checkModules(db, projectId, [...new Set(moduleIds)]);
+    const moduleIds = refs.moduleIds ?? [];
+    await checkModules(db, projectId, moduleIds);
     await setTestModules(db, testId, moduleIds);
     await event(db, suiteId, actor, "test_created", "", testId);
   }
@@ -1028,27 +1067,30 @@ export function createApi(
     const token = req.get("Authorization")?.match(/^Bearer (\S+)$/i)?.[1];
     if (!token) throw new HttpError(401, "Inicie sessão para continuar.");
     if (token.startsWith("th_")) {
-      if (
-        req.method !== "POST" ||
-        !/^\/projects\/[\da-f-]{36}\/suites$/i.test(req.path)
-      )
-        throw new HttpError(
-          403,
-          "Esta chave só permite publicar suites no seu projeto.",
-        );
       const key = (
         await db.query(
-          "SELECT id,project_id,name FROM integration_keys WHERE secret_hash=$1 AND revoked_at IS NULL",
+          "SELECT id,project_id,name,scope FROM integration_keys WHERE secret_hash=$1 AND revoked_at IS NULL",
           [digest(token)],
         )
       ).rows[0];
       if (!key)
         throw new HttpError(401, "Chave de integração inválida ou revogada.");
+      const route = `${req.method} ${req.path}`;
+      if (
+        !keyRoutes[key.scope as KeyScope].some((pattern) => pattern.test(route))
+      )
+        throw new HttpError(
+          403,
+          key.scope === "manage"
+            ? "Esta chave só permite publicar e editar suites e testes no seu projeto."
+            : "Esta chave só permite publicar suites no seu projeto.",
+        );
       res.locals.actor = {
         type: "integration",
         id: key.id,
         projectId: key.project_id,
         name: key.name,
+        scope: key.scope,
       } satisfies Actor;
     } else {
       const identity = await authentication.authenticate(token);
@@ -1823,7 +1865,7 @@ export function createApi(
       res.json({ [key]: count });
     });
   router.post("/suites/:suiteId/tests", async (req, res) => {
-    const input = testInput.parse(req.body);
+    const input = suiteTestInput.parse(req.body);
     const actor = actorOf(res);
     const suiteId = id(req, "suiteId");
     const result = await transaction(db, async (client) => {
@@ -1832,7 +1874,8 @@ export function createApi(
         lock: true,
       });
       expectVersion(req, suite);
-      await assigned(client, suite.project_id, input.assigneeId);
+      const refs = await testRefs(client, suite.project_id, input);
+      await assigned(client, suite.project_id, refs.assigneeId);
       const position = Number(
         (
           await client.query(
@@ -1852,14 +1895,14 @@ export function createApi(
             input.title,
             instructions,
             input.expectedResult,
-            input.assigneeId || null,
+            refs.assigneeId || null,
             position,
             input.priority ?? null,
           ],
         )
       ).rows[0];
       await insertSteps(client, test.id, steps);
-      const moduleIds = [...new Set(input.moduleIds ?? [])];
+      const moduleIds = refs.moduleIds ?? [];
       await checkModules(client, suite.project_id, moduleIds);
       await setTestModules(client, test.id, moduleIds);
       await touch(client, suiteId);
@@ -1891,14 +1934,14 @@ export function createApi(
     res.status(201).json(result);
   });
   router.patch("/tests/:testId", async (req, res) => {
-    const input = testInput
-      .extend({ position: z.number().int().min(0).max(10000).optional() })
-      .parse(req.body);
+    const input = testEditInput.parse(req.body);
     const actor = actorOf(res);
     const result = await transaction(db, async (client) => {
       const { test, suite } = await testScope(client, id(req, "testId"), actor);
       expectVersion(req, test);
-      await assigned(client, suite.project_id, input.assigneeId);
+      const refs = await testRefs(client, suite.project_id, input);
+      const assigneeId = refs.assigneeId;
+      await assigned(client, suite.project_id, assigneeId);
       const currentSteps = (
         await client.query(
           "SELECT body FROM test_steps WHERE test_id=$1 ORDER BY position,id",
@@ -1914,8 +1957,7 @@ export function createApi(
           [test.id],
         )
       ).rows.map((row) => row.module_id as string);
-      const nextModules =
-        input.moduleIds && [...new Set(input.moduleIds)].sort();
+      const nextModules = refs.moduleIds?.sort();
       const modulesChanged =
         !!nextModules &&
         JSON.stringify(nextModules) !== JSON.stringify(currentModules);
@@ -1927,6 +1969,17 @@ export function createApi(
         stepsChanged ||
         test.instructions !== input.instructions ||
         test.expected_result !== input.expectedResult;
+      // The UI confirms replacing a recorded result; a key confirms it explicitly.
+      if (
+        changed &&
+        test.status !== "pending" &&
+        actor.type === "integration" &&
+        !input.confirmReset
+      )
+        throw new HttpError(
+          409,
+          "Esta edição repõe um resultado registado como pendente. Envie confirmReset: true para confirmar.",
+        );
       if (stepsChanged) {
         await client.query("DELETE FROM test_steps WHERE test_id=$1", [
           test.id,
@@ -1963,9 +2016,7 @@ export function createApi(
             input.title,
             input.instructions,
             input.expectedResult,
-            input.assigneeId === undefined
-              ? test.assignee_id
-              : input.assigneeId,
+            assigneeId === undefined ? test.assignee_id : assigneeId,
             changed ? "pending" : test.status,
             input.position ?? test.position,
             input.priority === undefined ? test.priority : input.priority,
@@ -1973,7 +2024,7 @@ export function createApi(
         )
       ).rows[0];
       const reassigned =
-        input.assigneeId !== undefined && input.assigneeId !== test.assignee_id;
+        assigneeId !== undefined && assigneeId !== test.assignee_id;
       // A new title, priority or modules is an edit, but never resets the result.
       const retitled =
         test.title !== input.title ||
@@ -2006,7 +2057,7 @@ export function createApi(
               test.assignee_id,
               ...(await testerIds(client, "test_id", test.id)),
             ],
-            reassigned && input.assigneeId ? [input.assigneeId] : [],
+            reassigned && assigneeId ? [assigneeId] : [],
           );
       }
       if (reassigned) {
@@ -2019,7 +2070,7 @@ export function createApi(
           test.id,
           {
             previousAssigneeId: test.assignee_id,
-            assigneeId: input.assigneeId,
+            assigneeId,
           },
         );
         await notify(
@@ -2032,7 +2083,7 @@ export function createApi(
             testId: test.id,
             activityId,
           },
-          [input.assigneeId],
+          [assigneeId],
         );
       }
       await touch(client, suite.id);
@@ -2243,14 +2294,15 @@ export function createApi(
   });
   router.delete("/tests/:testId", async (req, res) => {
     const actor = actorOf(res);
-    const user = human(actor);
+    // Keys only reach this route with the manage scope, which an owner granted.
+    const user = actor.type === "user" ? actor.user : null;
     await transaction(db, async (client) => {
       const { test, suite, project } = await testScope(
         client,
         id(req, "testId"),
         actor,
       );
-      if (project.role !== "owner" && test.assignee_id !== user.id)
+      if (user && project.role !== "owner" && test.assignee_id !== user.id)
         throw new HttpError(
           403,
           "Só os proprietários e o responsável do teste o podem apagar.",
@@ -2262,7 +2314,7 @@ export function createApi(
       ];
       await client.query(
         "UPDATE tests SET deleted_at=clock_timestamp(),deleted_by=$2,updated_at=clock_timestamp(),version=version+1 WHERE id=$1",
-        [test.id, user.id],
+        [test.id, user?.id ?? null],
       );
       // Keep the visible checklist contiguous; the TC number is never reused.
       await client.query(
@@ -2568,7 +2620,7 @@ export function createApi(
     res.json(
       (
         await db.query(
-          "SELECT id,name,created_at,revoked_at FROM integration_keys WHERE project_id=$1 ORDER BY created_at DESC",
+          "SELECT id,name,scope,created_at,revoked_at FROM integration_keys WHERE project_id=$1 ORDER BY created_at DESC",
           [projectId],
         )
       ).rows.map(dto),
@@ -2589,8 +2641,15 @@ export function createApi(
       return dto(
         (
           await client.query(
-            "INSERT INTO integration_keys(id,project_id,name,secret_hash,created_by) VALUES($1,$2,$3,$4,$5) RETURNING id,name,created_at,revoked_at",
-            [randomUUID(), projectId, input.name, digest(secret), user.id],
+            "INSERT INTO integration_keys(id,project_id,name,scope,secret_hash,created_by) VALUES($1,$2,$3,$4,$5,$6) RETURNING id,name,scope,created_at,revoked_at",
+            [
+              randomUUID(),
+              projectId,
+              input.name,
+              input.scope,
+              digest(secret),
+              user.id,
+            ],
           )
         ).rows[0],
       );

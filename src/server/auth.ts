@@ -1,7 +1,7 @@
 import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from "jose";
 import { ConfidentialClientApplication } from "@azure/msal-node";
 import { createHash, randomBytes } from "node:crypto";
-import type { User } from "../shared/contracts";
+import type { KeyScope, User } from "../shared/contracts";
 import type { ActivityPayload } from "./teams";
 const uuidPattern =
   /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
@@ -382,4 +382,10 @@ export type Actor =
       admin: boolean;
       master: boolean;
     }
-  | { type: "integration"; id: string; projectId: string; name: string };
+  | {
+      type: "integration";
+      id: string;
+      projectId: string;
+      name: string;
+      scope: KeyScope;
+    };
