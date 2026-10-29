@@ -8,7 +8,7 @@
 | M2 — Projetos e suites     | Membros, suites independentes, lista, TipTap/Markdown, ícones, atribuição e eliminação lógica  | Implementado; validado localmente             |
 | M3 — Revisão manual        | Barra de progresso por estado, filtros/reordenação e atividade por teste em timeline           | Implementado; validado localmente             |
 | M4 — Arquivo de suites     | Arquivar suites, vista Arquivadas, restauro e leitura protegida                                | Implementado; validado localmente             |
-| M5 — Publicação por IA     | API JSON, chaves por projeto, idempotência, exemplo/script, OpenAPI                            | Implementado; validado localmente             |
+| M5 — Publicação por IA     | API JSON, chaves por projeto (publicar ou publicar e editar), idempotência, exemplo/script, OpenAPI | Implementado; validado localmente             |
 | M6 — Aceitação do piloto   | Teams web/desktop, convidados, Graph e acessibilidade                                          | Acessibilidade local validada; Teams pendente |
 | M7 — Colaboração           | Números SU/TC estáveis, passos partilhados, testers, anexos, @menções, notificações e pesquisa | Implementado; validado localmente             |
 | M8 — Feed de atividade     | Notificações Teams via Graph com deep link para o teste e comentário                           | Implementado; validação no tenant pendente    |

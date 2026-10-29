@@ -18,8 +18,7 @@ O raciocínio: comparar `deploy-producao-last` (tag da última produção conhec
 
 Regras do DevBoard que esta skill respeita:
 - os testes são manuais e começam **Pendentes**; nunca enviar estados ou resultados;
-- a chave de integração só pode criar suites no seu projeto e consultar ou editar o título e
-  a descrição dessas suites; o segredo nunca é impresso,
+- a chave de integração só pode criar suites no seu projeto; o segredo nunca é impresso,
   registado nem escrito em ficheiros;
 - cada publicação usa uma `Idempotency-Key` e retries da mesma publicação reutilizam-na.
 

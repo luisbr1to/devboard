@@ -9,7 +9,12 @@ import {
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { api, useRemote } from "./api";
-import type { Project, Member, IntegrationKey } from "../shared/contracts";
+import type {
+  Project,
+  Member,
+  IntegrationKey,
+  KeyScope,
+} from "../shared/contracts";
 import {
   Button,
   Confirm,
@@ -48,6 +53,7 @@ export function Settings({
   const [people, setPeople] = useState<DirectoryPerson[]>([]);
   const [role, setRole] = useState("member");
   const [keyName, setKeyName] = useState("");
+  const [keyScope, setKeyScope] = useState<KeyScope>("publish");
   const [secret, setSecret] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -230,9 +236,8 @@ export function Settings({
               <h2 className="card-title">Publicação por IA</h2>
               <p>
                 Publique suites em JSON com descrições em Markdown. Os testes
-                são criados pendentes. A mesma chave lê e edita o título e a
-                descrição das suites do projeto (<code>GET</code>/
-                <code>PATCH /api/v1/suites/…</code> com <code>If-Match</code>).
+                são criados pendentes. Uma chave com edição também lê as suites
+                e edita-as, e acrescenta, edita e apaga os seus testes.
               </p>
               <code className="endpoint">
                 POST /api/v1/projects/{project.id}/suites
@@ -277,10 +282,11 @@ export function Settings({
                     const result = await api<{ secret: string }>(
                       `/projects/${project.id}/keys`,
                       "POST",
-                      { name: keyName },
+                      { name: keyName, scope: keyScope },
                     );
                     setSecret(result.secret);
                     setKeyName("");
+                    setKeyScope("publish");
                   });
                 }}
               >
@@ -292,6 +298,16 @@ export function Settings({
                   maxLength={200}
                   placeholder="Ex.: Pipeline de QA"
                 />
+                <select
+                  aria-label="Permissão da chave"
+                  value={keyScope}
+                  onChange={(event) =>
+                    setKeyScope(event.target.value as KeyScope)
+                  }
+                >
+                  <option value="publish">Só publicar</option>
+                  <option value="manage">Publicar e editar</option>
+                </select>
                 <Button
                   variant="primary"
                   icon={<KeyIcon />}
@@ -311,7 +327,10 @@ export function Settings({
                     <div>
                       <strong>{key.name}</strong>
                       <small>
-                        {date(key.createdAt)} ·{" "}
+                        {key.scope === "manage"
+                          ? "Publicar e editar"
+                          : "Só publicar"}{" "}
+                        · {date(key.createdAt)} ·{" "}
                         {key.revokedAt ? "Chave revogada" : "Ativa"}
                       </small>
                     </div>
@@ -322,7 +341,9 @@ export function Settings({
                         setConfirmation({
                           title: "Revogar chave",
                           description:
-                            "A integração deixará de poder publicar suites. As suites existentes serão preservadas.",
+                            key.scope === "manage"
+                              ? "A integração deixará de poder publicar e editar suites. As suites e os testes existentes serão preservados."
+                              : "A integração deixará de poder publicar suites. As suites existentes serão preservadas.",
                           run: async () => {
                             await api(
                               `/projects/${project.id}/keys/${key.id}/revoke`,
