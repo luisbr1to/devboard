@@ -12,7 +12,7 @@ import {
   issueAssigneesInput,
   issueSelectionInput,
   issueImportInput,
-  issueInput,
+  issueFromDraftInput,
   issuePatchInput,
   issueStatusInput,
   issueTagInput,
@@ -27,6 +27,7 @@ import {
 } from "../shared/contracts";
 import { transaction, type Connection, type Database } from "./db";
 import { HttpError, type Actor } from "./auth";
+import { claimDraft, completeDraft } from "./notes";
 import {
   actorName,
   actorOf,
@@ -804,7 +805,7 @@ export function issueRoutes(router: Router, db: Database) {
     });
   });
   router.post("/projects/:projectId/issues", async (req, res) => {
-    const parsed = issueInput.parse(req.body);
+    const { draftId, ...parsed } = issueFromDraftInput.parse(req.body);
     const input = {
       ...parsed,
       moduleIds: unique(parsed.moduleIds),
@@ -816,6 +817,7 @@ export function issueRoutes(router: Router, db: Database) {
     const user = human(actor);
     const result = await transaction(db, async (client) => {
       await projectScope(client, projectId, actor, { write: true, lock: true });
+      const draft = draftId && (await claimDraft(client, draftId, actor));
       const statusId = input.statusId
         ? (await checkStatus(client, projectId, input.statusId)).id
         : await defaultStatus(client, projectId);
@@ -827,7 +829,10 @@ export function issueRoutes(router: Router, db: Database) {
         actor,
         projectId,
         { ...input, statusId, reporterId: user.id },
+        draft ? { draft: true } : {},
       );
+      if (draft)
+        await completeDraft(client, draft, projectId, issueId, activityId);
       await notify(
         client,
         actor,

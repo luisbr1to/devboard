@@ -18,6 +18,7 @@
 | M12 — Módulos nos testes   | Testes categorizados com os módulos do projeto, coluna e filtro, colunas configuráveis por pessoa | Implementado; validado localmente             |
 | M13 — Cor do avatar        | Cada pessoa escolhe a cor de fundo das iniciais, vista por toda a equipa | Implementado; validado localmente             |
 | M14 — Eliminação de issues | Ao criar o projeto escolhe-se entre guardar os issues apagados ou removê-los definitivamente | Implementado; validado localmente             |
+| M15 — Notas e rascunhos    | Notas Markdown pessoais (pastas, tags, pesquisa, anexos, referências #) e board de rascunhos que dão origem a issues | Implementado; validado localmente             |
 
 ## Sequência de ativação
 

@@ -20,6 +20,19 @@ export const fileSize = (bytes: number) =>
       ? `${Math.round(bytes / 1024)} KB`
       : `${(bytes / 1024 / 1024).toFixed(1).replace(".", ",")} MB`;
 
+/** Pasted screenshots have no name; type and size are checked before uploading. */
+function check(file: File) {
+  const name =
+    file.name ||
+    `captura-${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.png`;
+  const extension = name.split(".").pop()?.toLowerCase() || "";
+  const error = !allowed.has(extension)
+    ? "Tipo não suportado"
+    : file.size > maxSize
+      ? "Excede 10 MB"
+      : undefined;
+  return { name, error };
+}
 interface Pending {
   key: string;
   name: string;
@@ -30,10 +43,7 @@ interface Pending {
 
 /** Uploads files as soon as they are added; published with the comment by id. */
 export function useAttachments(target: UploadTarget) {
-  const key =
-    "issueId" in target
-      ? `issue:${target.issueId}`
-      : `suite:${target.suiteId}:${target.testId || ""}`;
+  const key = JSON.stringify(target);
   const latestTarget = useRef(target);
   latestTarget.current = target;
   const [files, setFiles] = useState<Pending[]>([]);
@@ -56,15 +66,7 @@ export function useAttachments(target: UploadTarget) {
     (list: File[]) => {
       for (const file of list) {
         const key = crypto.randomUUID();
-        const name =
-          file.name ||
-          `captura-${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.png`;
-        const extension = name.split(".").pop()?.toLowerCase() || "";
-        const error = !allowed.has(extension)
-          ? "Tipo não suportado"
-          : file.size > maxSize
-            ? "Excede 10 MB"
-            : undefined;
+        const { name, error } = check(file);
         setFiles((current) => [
           ...current,
           { key, name, size: file.size, error },
@@ -117,6 +119,42 @@ export function useAttachments(target: UploadTarget) {
   };
 }
 
+/** Uploads that belong to a note or draft at once: no publishing step, nothing to clean up. */
+export function useDirectUploads(target: UploadTarget, onUploaded: () => void) {
+  const [files, setFiles] = useState<Pending[]>([]);
+  const latest = useRef({ target, onUploaded });
+  latest.current = { target, onUploaded };
+  const add = useCallback((list: File[]) => {
+    for (const file of list) {
+      const key = crypto.randomUUID();
+      const { name, error } = check(file);
+      setFiles((current) => [
+        ...current,
+        { key, name, size: file.size, error },
+      ]);
+      if (error) continue;
+      void uploadAttachment(
+        latest.current.target,
+        name === file.name ? file : new File([file], name, { type: file.type }),
+      )
+        .then(() => {
+          setFiles((current) => current.filter((item) => item.key !== key));
+          latest.current.onUploaded();
+        })
+        .catch((failure: Error) =>
+          setFiles((current) =>
+            current.map((item) =>
+              item.key === key ? { ...item, error: failure.message } : item,
+            ),
+          ),
+        );
+    }
+  }, []);
+  const remove = (key: string) =>
+    setFiles((current) => current.filter((item) => item.key !== key));
+  return { files, add, remove };
+}
+
 export function PendingAttachments({
   files,
   onRemove,
@@ -160,12 +198,13 @@ export function PendingAttachments({
 }
 
 const blobs = new Map<string, Promise<Blob | null>>();
-const loadBlob = (id: string) => {
-  let blob = blobs.get(id);
+/** `path` is the attachment's URL: `/attachments/:id` or, for notes and drafts, `/me/attachments/:id`. */
+const loadBlob = (path: string) => {
+  let blob = blobs.get(path);
   if (!blob) {
-    blob = apiBlob(`/attachments/${id}`);
-    blobs.set(id, blob);
-    blob.catch(() => blobs.delete(id));
+    blob = apiBlob(path);
+    blobs.set(path, blob);
+    blob.catch(() => blobs.delete(path));
   }
   return blob;
 };
@@ -189,8 +228,8 @@ function useObjectUrl(id: string, enabled: boolean) {
   }, [id, enabled]);
   return url;
 }
-async function download(file: Attachment) {
-  const blob = await loadBlob(file.id);
+async function download(path: string, file: Attachment) {
+  const blob = await loadBlob(path);
   if (!blob) return;
   const url = URL.createObjectURL(blob);
   const link = Object.assign(document.createElement("a"), {
@@ -200,8 +239,8 @@ async function download(file: Attachment) {
   link.click();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-function Thumbnail({ file }: { file: Attachment }) {
-  const url = useObjectUrl(file.id, true);
+function Thumbnail({ path, file }: { path: string; file: Attachment }) {
+  const url = useObjectUrl(path, true);
   return (
     <button
       type="button"
@@ -215,17 +254,47 @@ function Thumbnail({ file }: { file: Attachment }) {
   );
 }
 /** Published attachments, loaded through the API with the user's session. */
-export function AttachmentList({ files }: { files: Attachment[] }) {
+export function AttachmentList({
+  files,
+  personal = false,
+  onRemove,
+}: {
+  files: Attachment[];
+  /** Files of the person's notes and drafts. */
+  personal?: boolean;
+  onRemove?(file: Attachment): void;
+}) {
   if (!files.length) return null;
+  const path = (file: Attachment) =>
+    `${personal ? "/me" : ""}/attachments/${file.id}`;
+  const remove = (file: Attachment) =>
+    onRemove && (
+      <button
+        type="button"
+        className="attachment-remove"
+        aria-label={`Remover ${file.fileName}`}
+        title="Remover"
+        onClick={() => onRemove(file)}
+      >
+        <XMarkIcon aria-hidden />
+      </button>
+    );
   const images = files.filter((file) => file.contentType.startsWith("image/"));
   const others = files.filter((file) => !file.contentType.startsWith("image/"));
   return (
     <div className="attachments">
       {images.length > 0 && (
         <div className="attachment-thumbs">
-          {images.map((file) => (
-            <Thumbnail key={file.id} file={file} />
-          ))}
+          {images.map((file) =>
+            onRemove ? (
+              <span key={file.id} className="attachment-thumb-item">
+                <Thumbnail path={path(file)} file={file} />
+                {remove(file)}
+              </span>
+            ) : (
+              <Thumbnail key={file.id} path={path(file)} file={file} />
+            ),
+          )}
         </div>
       )}
       {others.length > 0 && (
@@ -235,13 +304,14 @@ export function AttachmentList({ files }: { files: Attachment[] }) {
               <button
                 type="button"
                 className="attachment-chip attachment-download"
-                onClick={() => void download(file)}
+                onClick={() => void download(path(file), file)}
               >
                 <DocumentTextIcon aria-hidden />
                 <span className="attachment-name">{file.fileName}</span>
                 <small>{fileSize(file.size)}</small>
                 <ArrowDownTrayIcon aria-hidden />
               </button>
+              {remove(file)}
             </li>
           ))}
         </ul>

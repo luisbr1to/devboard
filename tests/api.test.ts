@@ -178,7 +178,7 @@ before(async () => {
 });
 beforeEach(async () => {
   await engine.exec(
-    "TRUNCATE app_admins,user_preferences,issue_imports,issue_assignees,issue_module_links,issue_label_links,notifications,attachments,issues,issue_statuses,issue_modules,issue_labels,test_steps,import_requests,integration_keys,activities,project_activities,tests,suites,project_members,projects,users CASCADE",
+    "TRUNCATE personal_attachments,issue_drafts,notes,note_folders,app_admins,user_preferences,issue_imports,issue_assignees,issue_module_links,issue_label_links,notifications,attachments,issues,issue_statuses,issue_modules,issue_labels,test_steps,import_requests,integration_keys,activities,project_activities,tests,suites,project_members,projects,users CASCADE",
   );
   await call("post", "/setup", "admin", { code: setupCode }).expect(201);
 });
@@ -232,9 +232,7 @@ test("admins: create projects, act as invisible owners everywhere and manage adm
   // Only administrators create projects; their projects start without members.
   await call("post", "/projects", "owner", { name: "Meu" }).expect(403);
   const solo = (
-    await call("post", "/projects", "admin", { name: "Sem equipa" }).expect(
-      201,
-    )
+    await call("post", "/projects", "admin", { name: "Sem equipa" }).expect(201)
   ).body;
   assert.equal(solo.role, "owner");
   assert.deepEqual(
@@ -314,12 +312,9 @@ test("admins: create projects, act as invisible owners everywhere and manage adm
     ],
   );
   // An administrator overrides a read-only membership.
-  await call(
-    "patch",
-    `/projects/${project.id}/members/${added.id}`,
-    "owner",
-    { role: "viewer" },
-  ).expect(204);
+  await call("patch", `/projects/${project.id}/members/${added.id}`, "owner", {
+    role: "viewer",
+  }).expect(204);
   await call("post", `/suites/${suite.id}/comments`, "member", {
     body: "Como administrador",
   }).expect(201);
@@ -1183,9 +1178,10 @@ test("suite search, status, assignee and archive filters agree with pagination",
     ).body.total,
     2,
   );
-  await call("get", `/projects/${project.id}/suites?status=pending,bogus`).expect(
-    400,
-  );
+  await call(
+    "get",
+    `/projects/${project.id}/suites?status=pending,bogus`,
+  ).expect(400);
   const page = (
     await call(
       "get",
@@ -1735,6 +1731,7 @@ test("global search covers suites, tests, steps and comments within membership",
     tests: [],
     issues: [],
     comments: [],
+    notes: [],
   });
   await call("get", "/search?q=a").expect(400);
 });
@@ -2398,10 +2395,9 @@ test("issues: owners archive by status rule and restore several at once", async 
   // Rules only take finished work: open statuses are refused.
   await rule([status("Backlog").id]).expect(400);
   await rule([]).expect(400);
-  assert.deepEqual(
-    (await rule([status("Duplicado").id]).expect(200)).body,
-    { archived: 2 },
-  );
+  assert.deepEqual((await rule([status("Duplicado").id]).expect(200)).body, {
+    archived: 2,
+  });
   const titles = async (archive: string) =>
     (
       await call(
@@ -2416,14 +2412,12 @@ test("issues: owners archive by status rule and restore several at once", async 
   assert.deepEqual(activity.at(-1).kind, "issue_archived");
   assert.deepEqual(activity.at(-1).detail, { rule: "Duplicado" });
   // Running the same rule again is harmless.
+  assert.deepEqual((await rule([status("Duplicado").id]).expect(200)).body, {
+    archived: 0,
+  });
   assert.deepEqual(
-    (await rule([status("Duplicado").id]).expect(200)).body,
-    { archived: 0 },
-  );
-  assert.deepEqual(
-    (
-      await rule([status("Resolvido").id, status("Fechado").id]).expect(200)
-    ).body,
+    (await rule([status("Resolvido").id, status("Fechado").id]).expect(200))
+      .body,
     { archived: 1 },
   );
 
@@ -2467,12 +2461,9 @@ test("issues: owners archive by status rule and restore several at once", async 
   ]);
   const other = await fixture();
   await restore([{ id: r.id, version: r.version }], "owner").expect(200);
-  await call(
-    "post",
-    `/projects/${other.project.id}/issues/restore`,
-    "owner",
-    { issues: [{ id: d1.id, version: d1.version + 2 }] },
-  ).expect(404);
+  await call("post", `/projects/${other.project.id}/issues/restore`, "owner", {
+    issues: [{ id: d1.id, version: d1.version + 2 }],
+  }).expect(404);
 });
 test("issues: owners archive and delete selected issues in one transaction", async () => {
   const { project, status, memberId } = await issueFixture();
@@ -2542,10 +2533,10 @@ test("issues: owners archive and delete selected issues in one transaction", asy
   const deletedNotes = (
     await call("get", "/notifications", "member").expect(200)
   ).body.items.filter((item: any) => item.kind === "issue_deleted");
-  assert.deepEqual(
-    deletedNotes.map((item: any) => item.detail.title).sort(),
-    ["A", "C"],
-  );
+  assert.deepEqual(deletedNotes.map((item: any) => item.detail.title).sort(), [
+    "A",
+    "C",
+  ]);
   // Deleted issues can no longer be picked.
   await call("post", `/projects/${project.id}/issues/delete`, "owner", {
     issues: pick(a),
@@ -2598,7 +2589,9 @@ test("suites: owners archive, restore and delete selected suites in bulk", async
   const kinds = (
     await call("get", `/suites/${suite.id}/activity`).expect(200)
   ).body.map((item: any) => item.kind);
-  assert.ok(kinds.includes("suite_archived") && kinds.includes("suite_restored"));
+  assert.ok(
+    kinds.includes("suite_archived") && kinds.includes("suite_restored"),
+  );
   // Deleting mixes active and archived suites.
   assert.deepEqual(
     (
@@ -3701,4 +3694,347 @@ test("avatar colors: each person picks their own, everyone sees it", async () =>
   await call("get", "/me", "member").expect(200);
   await call("put", "/me/avatar-color", "member", { color: null }).expect(200);
   assert.equal((await colors())["João Costa"], null);
+});
+
+const personalUpload = (
+  path: string,
+  token: string,
+  name: string,
+  body: string,
+) =>
+  request(app)
+    .post(`/api/v1${path}`)
+    .set("Authorization", `Bearer ${token}`)
+    .set("Content-Type", "application/octet-stream")
+    .set("X-File-Name", name)
+    .send(Buffer.from(body));
+test("notes: private to their author, with folders, tags, search and a recycle bin", async () => {
+  const { project } = await fixture();
+  const meetings = (
+    await call("post", "/me/note-folders", "owner", {
+      name: "Reuniões",
+    }).expect(201)
+  ).body;
+  const year = (
+    await call("post", "/me/note-folders", "owner", {
+      name: "2026",
+      parentId: meetings.id,
+    }).expect(201)
+  ).body;
+  await call("post", "/me/note-folders", "owner", { name: "reuniões" }).expect(
+    409,
+  );
+  await call("post", "/me/note-folders", "member", {
+    name: "Minha",
+    parentId: meetings.id,
+  }).expect(404);
+  await call("patch", `/me/note-folders/${meetings.id}`, "owner", {
+    parentId: year.id,
+  }).expect(409);
+  const note = (
+    await call("post", "/me/notes", "owner", {
+      title: "Daily de segunda",
+      body: "- Corrigir o checkout no Safari\n- Rever pagamentos",
+      folderId: year.id,
+      tags: ["#Daily", "daily", "Equipa"],
+    }).expect(201)
+  ).body;
+  assert.deepEqual(note.tags, ["daily", "equipa"]);
+  assert.equal(note.version, 1);
+  for (const token of ["member", "admin"]) {
+    await call("get", `/me/notes/${note.id}`, token).expect(404);
+    await call(
+      "patch",
+      `/me/notes/${note.id}`,
+      token,
+      { title: "x" },
+      1,
+    ).expect(404);
+  }
+  assert.deepEqual((await call("get", "/me/notes", "member")).body, []);
+  await call("patch", `/me/notes/${note.id}`, "owner", { title: "x" }).expect(
+    428,
+  );
+  await call(
+    "patch",
+    `/me/notes/${note.id}`,
+    "owner",
+    { title: "x" },
+    9,
+  ).expect(409);
+  const edited = (
+    await call(
+      "patch",
+      `/me/notes/${note.id}`,
+      "owner",
+      { body: `${note.body}\n- Ligar ao cliente` },
+      1,
+    ).expect(200)
+  ).body;
+  assert.equal(edited.version, 2);
+  assert.equal(edited.title, "Daily de segunda");
+  const other = (
+    await call("post", "/me/notes", "owner", { title: "Ideias" }).expect(201)
+  ).body;
+  const found = (await call("get", "/me/notes?q=safari")).body;
+  assert.deepEqual(
+    found.map((item: any) => item.id),
+    [note.id],
+  );
+  assert.match(found[0].excerpt, /Safari/);
+  assert.equal((await call("get", "/me/notes?tag=%23daily")).body.length, 1);
+  assert.deepEqual((await call("get", "/me/note-tags")).body, [
+    { name: "daily", count: 1 },
+    { name: "equipa", count: 1 },
+  ]);
+  assert.equal(
+    (await call("get", "/search?q=safari")).body.notes[0].id,
+    note.id,
+  );
+  assert.deepEqual(
+    (await call("get", "/search?q=safari", "member")).body.notes,
+    [],
+  );
+  // Removing a folder keeps everything it held, one level up.
+  await call("delete", `/me/note-folders/${meetings.id}`).expect(204);
+  const folders = (await call("get", "/me/note-folders")).body;
+  assert.deepEqual(folders, [{ id: year.id, parentId: null, name: "2026" }]);
+  const file = (
+    await personalUpload(
+      `/me/notes/${note.id}/attachments`,
+      "owner",
+      "ata.txt",
+      "ata",
+    ).expect(201)
+  ).body;
+  await personalUpload(
+    `/me/notes/${note.id}/attachments`,
+    "member",
+    "x.txt",
+    "x",
+  ).expect(404);
+  assert.equal(
+    (await call("get", `/me/notes/${note.id}`)).body.attachments[0].fileName,
+    "ata.txt",
+  );
+  await call("get", `/me/attachments/${file.id}`, "owner").expect(200);
+  await call("get", `/me/attachments/${file.id}`, "member").expect(404);
+  await call("delete", `/me/attachments/${file.id}`, "member").expect(404);
+  // Recycle bin: deleted notes can be restored, and only then removed for good.
+  await call("delete", `/me/notes/${other.id}?permanent=1`).expect(409);
+  await call("delete", `/me/notes/${note.id}`).expect(204);
+  assert.deepEqual(
+    (await call("get", "/me/notes")).body.map((item: any) => item.id),
+    [other.id],
+  );
+  assert.equal((await call("get", "/me/notes?deleted=1")).body[0].id, note.id);
+  await call(
+    "patch",
+    `/me/notes/${note.id}`,
+    "owner",
+    { title: "x" },
+    3,
+  ).expect(409);
+  const restored = (
+    await call("post", `/me/notes/${note.id}/restore`).expect(200)
+  ).body;
+  assert.equal(restored.deletedAt, null);
+  assert.equal(restored.folderId, year.id);
+  await call("delete", `/me/notes/${note.id}`).expect(204);
+  await call("delete", `/me/notes/${note.id}?permanent=1`).expect(204);
+  await call("get", `/me/notes/${note.id}`).expect(404);
+  // Integration keys never reach the personal area.
+  const key = (
+    await call("post", `/projects/${project.id}/keys`, "owner", {
+      name: "Pipeline",
+      scope: "manage",
+    }).expect(201)
+  ).body;
+  await call("get", "/me/notes", key.secret).expect(403);
+});
+test("drafts: personal board, items from notes and conversion into issues", async () => {
+  const { project, members, ownerId } = await issueFixture();
+  const note = (
+    await call("post", "/me/notes", "owner", {
+      title: "Daily",
+      body: "- A\n- B\n- C",
+    }).expect(201)
+  ).body;
+  const items = ["A", "B", "C"].map((title) => ({
+    title,
+    description: `Da daily: ${title}`,
+    sourceText: title,
+  }));
+  const drafts = (
+    await call("post", "/me/drafts", "owner", {
+      noteId: note.id,
+      projectId: project.id,
+      priority: 2,
+      items,
+    }).expect(201)
+  ).body;
+  assert.deepEqual(
+    drafts.map((draft: any) => [draft.title, draft.state, draft.position]),
+    [
+      ["A", "review", 0],
+      ["B", "review", 1],
+      ["C", "review", 2],
+    ],
+  );
+  assert.equal(drafts[0].projectName, "Checkout");
+  assert.equal(drafts[0].noteTitle, "Daily");
+  assert.equal(drafts[0].priority, 2);
+  const [a, b, c] = drafts;
+  await call("post", "/me/drafts", "member", { noteId: note.id, items }).expect(
+    404,
+  );
+  await call("post", "/me/drafts", "outsider", {
+    projectId: project.id,
+    items,
+  }).expect(404);
+  const guest = members.find(
+    (member: any) => member.oid === identities.guest.oid,
+  );
+  await call("patch", `/projects/${project.id}/members/${guest.id}`, "owner", {
+    role: "viewer",
+  }).expect(204);
+  await call("post", "/me/drafts", "guest", {
+    projectId: project.id,
+    items,
+  }).expect(403);
+  assert.deepEqual((await call("get", "/me/drafts", "member")).body, []);
+  await call("get", `/me/drafts/${a.id}`, "member").expect(404);
+  // Board moves keep each column contiguous; "Criado" is never a target.
+  await call("post", `/me/drafts/${c.id}/move`, "owner", {
+    state: "ready",
+    position: 0,
+  }).expect(200);
+  const moved = (
+    await call("post", `/me/drafts/${a.id}/move`, "owner", {
+      state: "ready",
+      position: 5,
+    }).expect(200)
+  ).body;
+  assert.equal(moved.position, 1);
+  await call("post", `/me/drafts/${b.id}/move`, "owner", {
+    state: "created",
+    position: 0,
+  }).expect(400);
+  const columns = async () =>
+    (await call("get", "/me/drafts")).body.map((draft: any) => [
+      draft.title,
+      draft.state,
+      draft.position,
+    ]);
+  assert.deepEqual(await columns(), [
+    ["C", "ready", 0],
+    ["A", "ready", 1],
+    ["B", "review", 0],
+  ]);
+  await personalUpload(
+    `/me/drafts/${a.id}/attachments`,
+    "owner",
+    "erro.txt",
+    "trace",
+  ).expect(201);
+  // Someone else cannot use the draft, and the failed attempt creates nothing.
+  await call("post", `/projects/${project.id}/issues`, "member", {
+    title: "Alheio",
+    draftId: a.id,
+  }).expect(404);
+  assert.equal(
+    (await call("get", `/projects/${project.id}/issues`)).body.total,
+    0,
+  );
+  const issue = (
+    await call("post", `/projects/${project.id}/issues`, "owner", {
+      title: "A, revisto",
+      description: "Da daily: A",
+      priority: 2,
+      draftId: a.id,
+    }).expect(201)
+  ).body;
+  assert.equal(issue.reporterId, ownerId);
+  const created = (await call("get", `/me/drafts/${a.id}`)).body;
+  assert.equal(created.state, "created");
+  assert.equal(created.issueId, issue.id);
+  assert.equal(created.issueNumber, issue.number);
+  assert.deepEqual(await columns(), [
+    ["A", "created", 0],
+    ["C", "ready", 0],
+    ["B", "review", 0],
+  ]);
+  const activity = (await call("get", `/issues/${issue.id}/activity`)).body;
+  assert.equal(activity[0].kind, "issue_created");
+  assert.equal(activity[0].detail.draft, true);
+  assert.equal(activity[0].attachments[0].fileName, "erro.txt");
+  await call("post", `/projects/${project.id}/issues`, "owner", {
+    title: "De novo",
+    draftId: a.id,
+  }).expect(409);
+  await call(
+    "patch",
+    `/me/drafts/${a.id}`,
+    "owner",
+    { title: "x" },
+    created.version,
+  ).expect(409);
+  await call("post", `/me/drafts/${a.id}/move`, "owner", {
+    state: "review",
+    position: 0,
+  }).expect(409);
+  // Only discarded drafts can be removed; removing the note keeps its drafts.
+  await call("delete", `/me/drafts/${b.id}`).expect(409);
+  await call("post", `/me/drafts/${b.id}/move`, "owner", {
+    state: "discarded",
+    position: 0,
+  }).expect(200);
+  await call("delete", `/me/drafts/${b.id}`).expect(204);
+  const patched = (
+    await call(
+      "patch",
+      `/me/drafts/${c.id}`,
+      "owner",
+      { projectId: null, priority: null },
+      (await call("get", `/me/drafts/${c.id}`)).body.version,
+    ).expect(200)
+  ).body;
+  assert.equal(patched.projectId, null);
+  await call("put", "/me/preferences/drafts.view", "owner", {
+    value: "table",
+  }).expect(200);
+  await call("delete", `/me/notes/${note.id}`).expect(204);
+  await call("delete", `/me/notes/${note.id}?permanent=1`).expect(204);
+  const left = (await call("get", "/me/drafts")).body;
+  assert.equal(left.length, 2);
+  assert.ok(left.every((draft: any) => draft.noteId === null));
+});
+test("drafts: an issue removed for good leaves its draft as created, without the issue", async () => {
+  const project = await createProject({
+    name: "Sem histórico",
+    issueSoftDelete: false,
+  });
+  const [draft] = (
+    await call("post", "/me/drafts", "owner", {
+      projectId: project.id,
+      items: [{ title: "Temporário" }],
+    }).expect(201)
+  ).body;
+  const issue = (
+    await call("post", `/projects/${project.id}/issues`, "owner", {
+      title: "Temporário",
+      draftId: draft.id,
+    }).expect(201)
+  ).body;
+  await call(
+    "delete",
+    `/issues/${issue.id}`,
+    "owner",
+    undefined,
+    issue.version,
+  ).expect(204);
+  const left = (await call("get", `/me/drafts/${draft.id}`)).body;
+  assert.equal(left.state, "created");
+  assert.equal(left.issueId, null);
+  assert.equal(left.issueNumber, null);
 });

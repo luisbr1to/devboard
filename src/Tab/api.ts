@@ -49,29 +49,35 @@ export async function api<T>(
   }
   return result as T;
 }
-/** Where a comment's attachments are uploaded: a suite (optionally one of its tests) or an issue. */
+/** Where a comment's attachments are uploaded: a suite (optionally one of its tests) or an issue; or a personal note or draft. */
 export type UploadTarget =
-  { suiteId: string; testId?: string } | { issueId: string };
+  | { suiteId: string; testId?: string }
+  | { issueId: string }
+  | { noteId: string }
+  | { draftId: string };
+const uploadPath = (target: UploadTarget) =>
+  "issueId" in target
+    ? `/api/v1/issues/${target.issueId}/attachments`
+    : "noteId" in target
+      ? `/api/v1/me/notes/${target.noteId}/attachments`
+      : "draftId" in target
+        ? `/api/v1/me/drafts/${target.draftId}/attachments`
+        : `/api/v1/suites/${target.suiteId}/attachments${target.testId ? `?testId=${target.testId}` : ""}`;
 export async function uploadAttachment(
   target: UploadTarget,
   file: File,
 ): Promise<Attachment> {
   if (!session) throw new Error("Inicie sessão para continuar.");
-  const response = await fetch(
-    "issueId" in target
-      ? `/api/v1/issues/${target.issueId}/attachments`
-      : `/api/v1/suites/${target.suiteId}/attachments${target.testId ? `?testId=${target.testId}` : ""}`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${await session.getToken()}`,
-        // Always binary: the server decides the type from the extension and content.
-        "Content-Type": "application/octet-stream",
-        "X-File-Name": encodeURIComponent(file.name),
-      },
-      body: file,
+  const response = await fetch(uploadPath(target), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${await session.getToken()}`,
+      // Always binary: the server decides the type from the extension and content.
+      "Content-Type": "application/octet-stream",
+      "X-File-Name": encodeURIComponent(file.name),
     },
-  );
+    body: file,
+  });
   const result = await response.json();
   if (!response.ok)
     throw new Error(result.error || "Não foi possível anexar o ficheiro.");

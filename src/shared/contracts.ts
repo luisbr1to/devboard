@@ -348,6 +348,7 @@ export const preferenceKeys = [
   "issues.pageSize",
   "suites.pageSize",
   "tests.pageSize",
+  "drafts.view",
 ] as const;
 export const preferenceInput = z.union([
   z.array(z.string().max(40)).max(30),
@@ -365,6 +366,135 @@ export const boardPreferenceInput = z
   })
   .strict();
 export type BoardPreference = z.infer<typeof boardPreferenceInput>;
+/** Personal notes and issue drafts belong to their author only, outside any project. */
+const noteBody = z.string().max(200000);
+/** Stored without "#" and in lower case (normalized by the server). */
+const noteTags = z
+  .array(
+    z
+      .string()
+      .trim()
+      .regex(
+        /^#?[^\s#,]{1,40}$/,
+        "Cada tag tem até 40 caracteres, sem espaços nem vírgulas.",
+      ),
+  )
+  .max(20);
+export const noteInput = z
+  .object({
+    title,
+    body: noteBody.default(""),
+    folderId: z.string().uuid().nullable().default(null),
+    tags: noteTags.default([]),
+  })
+  .strict();
+export const notePatchInput = z
+  .object({
+    title: title.optional(),
+    body: noteBody.optional(),
+    folderId: z.string().uuid().nullable().optional(),
+    tags: noteTags.optional(),
+  })
+  .strict();
+export const noteFolderInput = z
+  .object({
+    name: z.string().trim().min(1).max(80),
+    parentId: z.string().uuid().nullable().default(null),
+  })
+  .strict();
+export const noteFolderPatchInput = z
+  .object({
+    name: z.string().trim().min(1).max(80).optional(),
+    parentId: z.string().uuid().nullable().optional(),
+  })
+  .strict();
+export const draftStates = ["review", "ready", "created", "discarded"] as const;
+export type DraftState = (typeof draftStates)[number];
+export const draftStateLabels: Record<DraftState, string> = {
+  review: "Por rever",
+  ready: "Pronto a criar",
+  created: "Criado",
+  discarded: "Descartado",
+};
+const draftItem = z
+  .object({
+    title,
+    description: markdown,
+    /** The note item it came from, to warn before drafting it twice. */
+    sourceText: z.string().max(2000).nullable().default(null),
+  })
+  .strict();
+export const draftBatchInput = z
+  .object({
+    noteId: z.string().uuid().nullable().default(null),
+    projectId: z.string().uuid().nullable().default(null),
+    priority: priority.default(null),
+    items: z.array(draftItem).min(1).max(50),
+  })
+  .strict();
+export const draftPatchInput = z
+  .object({
+    title: title.optional(),
+    description: z.string().max(50000).optional(),
+    projectId: z.string().uuid().nullable().optional(),
+    priority: priority.optional(),
+  })
+  .strict();
+/** "Criado" is reached only by creating the issue, and never left. */
+export const draftMoveInput = z
+  .object({
+    state: z.enum(["review", "ready", "discarded"]),
+    position: z.number().int().min(0).max(100000),
+  })
+  .strict();
+/** Creating an issue from a draft marks the draft as created in the same transaction. */
+export const issueFromDraftInput = issueInput
+  .extend({ draftId: z.string().uuid().optional() })
+  .strict();
+export interface NoteFolder {
+  id: string;
+  parentId: string | null;
+  name: string;
+}
+export interface NoteSummary {
+  id: string;
+  folderId: string | null;
+  title: string;
+  tags: string[];
+  excerpt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+export interface Note extends Omit<NoteSummary, "excerpt"> {
+  body: string;
+  createdAt: string;
+  version: number;
+  attachments: Attachment[];
+}
+export interface NoteTag {
+  name: string;
+  count: number;
+}
+export interface IssueDraft {
+  id: string;
+  noteId: string | null;
+  noteTitle: string | null;
+  sourceText: string | null;
+  projectId: string | null;
+  /** Null when no project is chosen or the author no longer has access to it. */
+  projectName: string | null;
+  title: string;
+  description: string;
+  priority: number | null;
+  state: DraftState;
+  position: number;
+  issueId: string | null;
+  issueNumber: number | null;
+  createdAt: string;
+  updatedAt: string;
+  version: number;
+  attachments: Attachment[];
+}
 export interface User {
   id: string;
   oid: string;
@@ -572,6 +702,13 @@ export interface SearchResults {
     actorName: string;
     excerpt: string;
     createdAt: string;
+  }[];
+  /** The person's own notes. */
+  notes: {
+    id: string;
+    title: string;
+    excerpt: string;
+    updatedAt: string;
   }[];
 }
 export interface IssueStatus {

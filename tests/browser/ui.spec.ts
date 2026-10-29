@@ -966,6 +966,7 @@ test("notification centre and global search open the exact test and comment", as
         ],
         issues: [],
         comments: [],
+        notes: [],
       };
     else if (path.endsWith("/activity"))
       result = [
@@ -1034,7 +1035,7 @@ test("notification centre and global search open the exact test and comment", as
   const search = page.getByRole("dialog", { name: "Procurar" });
   await search
     .getByRole("searchbox", {
-      name: "Procurar suites, testes, issues e comentários",
+      name: "Procurar suites, testes, issues, comentários e notas",
     })
     .fill("fluxo");
   await search

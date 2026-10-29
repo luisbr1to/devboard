@@ -3,6 +3,8 @@ import {
   useEffect,
   useImperativeHandle,
   useState,
+  type ComponentType,
+  type RefAttributes,
   type RefObject,
 } from "react";
 import { ReactRenderer } from "@tiptap/react";
@@ -31,8 +33,52 @@ export const MentionView = Mention.configure({
   HTMLAttributes: { class: "mention" },
 });
 
-interface ListHandle {
+export interface ListHandle {
   onKeyDown(props: SuggestionKeyDownProps): boolean;
+}
+/** Floating list for a suggestion ("@" people, "#" references), placed at the caret. */
+export function suggestionPopup<T>(
+  List: ComponentType<SuggestionProps<T> & RefAttributes<ListHandle>>,
+) {
+  let renderer: ReactRenderer<ListHandle, SuggestionProps<T>>;
+  const place = (props: SuggestionProps<T>) => {
+    const rect = props.clientRect?.();
+    const element = renderer.element as HTMLElement;
+    if (!rect) return;
+    const below = rect.bottom + 240 < window.innerHeight;
+    Object.assign(element.style, {
+      position: "fixed",
+      zIndex: "10",
+      left: `${Math.min(rect.left, window.innerWidth - 280)}px`,
+      top: below ? `${rect.bottom + 4}px` : "",
+      bottom: below ? "" : `${window.innerHeight - rect.top + 4}px`,
+    });
+  };
+  return {
+    onStart(props: SuggestionProps<T>) {
+      renderer = new ReactRenderer(List, { props, editor: props.editor });
+      // Inside a modal dialog only its own subtree is rendered above the backdrop.
+      (props.editor.view.dom.closest("dialog") || document.body).append(
+        renderer.element,
+      );
+      place(props);
+    },
+    onUpdate(props: SuggestionProps<T>) {
+      renderer.updateProps(props);
+      place(props);
+    },
+    onKeyDown(props: SuggestionKeyDownProps) {
+      if (props.event.key === "Escape") {
+        renderer.element.remove();
+        return true;
+      }
+      return renderer.ref?.onKeyDown(props) ?? false;
+    },
+    onExit() {
+      renderer.element.remove();
+      renderer.destroy();
+    },
+  };
 }
 const MentionList = forwardRef<ListHandle, SuggestionProps<Mentionable>>(
   function MentionList({ items, command }, ref) {
@@ -108,50 +154,7 @@ export function mentionEditor(people: RefObject<Mentionable[]>) {
           )
           .slice(0, 6);
       },
-      render: () => {
-        let renderer: ReactRenderer<ListHandle, SuggestionProps<Mentionable>>;
-        const place = (props: SuggestionProps<Mentionable>) => {
-          const rect = props.clientRect?.();
-          const element = renderer.element as HTMLElement;
-          if (!rect) return;
-          const below = rect.bottom + 240 < window.innerHeight;
-          Object.assign(element.style, {
-            position: "fixed",
-            zIndex: "10",
-            left: `${Math.min(rect.left, window.innerWidth - 280)}px`,
-            top: below ? `${rect.bottom + 4}px` : "",
-            bottom: below ? "" : `${window.innerHeight - rect.top + 4}px`,
-          });
-        };
-        return {
-          onStart(props) {
-            renderer = new ReactRenderer(MentionList, {
-              props,
-              editor: props.editor,
-            });
-            // Inside a modal dialog only its own subtree is rendered above the backdrop.
-            (props.editor.view.dom.closest("dialog") || document.body).append(
-              renderer.element,
-            );
-            place(props);
-          },
-          onUpdate(props) {
-            renderer.updateProps(props);
-            place(props);
-          },
-          onKeyDown(props) {
-            if (props.event.key === "Escape") {
-              renderer.element.remove();
-              return true;
-            }
-            return renderer.ref?.onKeyDown(props) ?? false;
-          },
-          onExit() {
-            renderer.element.remove();
-            renderer.destroy();
-          },
-        };
-      },
+      render: () => suggestionPopup(MentionList),
     },
   });
 }

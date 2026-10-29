@@ -60,6 +60,7 @@ import {
   releaseIssueAssignments,
   seedIssueStatuses,
 } from "./issues";
+import { noteRoutes, snippet as noteSnippet } from "./notes";
 
 export type Row = Record<string, any>;
 /** Membership whose temporary block (if any) is over; use with the alias `m`. */
@@ -2612,7 +2613,20 @@ export function createApi(
       .sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at))
       .slice(0, 8)
       .map(snippet);
-    res.json({ suites, tests, issues, comments: allComments });
+    // Only the person's own notes; a number or key search is about project items.
+    const notes =
+      suiteNumber || testNumber || issueNumber
+        ? []
+        : (
+            await db.query(
+              "SELECT id,title,body,updated_at FROM notes WHERE user_id=$1 AND deleted_at IS NULL AND (title ILIKE $2 ESCAPE '\\' OR body ILIKE $2 ESCAPE '\\') ORDER BY updated_at DESC LIMIT 8",
+              [user.id, pattern],
+            )
+          ).rows.map(({ body, ...row }) => ({
+            ...dto(row),
+            excerpt: noteSnippet(body, query),
+          }));
+    res.json({ suites, tests, issues, comments: allComments, notes });
   });
   router.get("/projects/:projectId/keys", async (req, res) => {
     const projectId = id(req, "projectId");
@@ -2671,6 +2685,7 @@ export function createApi(
     res.json({ ok: true });
   });
   issueRoutes(router, db);
+  noteRoutes(router, db);
   router.use((_req, _res, next) =>
     next(new HttpError(404, "Operação não encontrada.")),
   );

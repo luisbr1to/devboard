@@ -1,7 +1,17 @@
-// Hash routes: #project=…&suite=…&test=…&activity=…&view=settings|dev&issue=…, or #view=admin
-export type Section = "suites" | "dev" | "settings" | "admin";
+// Hash routes: #project=…&suite=…&test=…&activity=…&view=settings|dev&issue=…, or #view=admin,
+// or the personal #view=notes&note=… and #view=drafts&draft=… (keeping the current project, if any).
+export type Section = "suites" | "dev" | "settings" | "admin" | Personal;
+export type Personal = "notes" | "drafts";
+const sections: Section[] = ["settings", "dev", "admin", "notes", "drafts"];
 /** Application administration, outside any project. */
 export const adminHash = "#view=admin";
+/** Personal notes and drafts; the project only keeps the sidebar where it was. */
+export function personalHash(view: Personal, projectId = "", id = "") {
+  const params = new URLSearchParams({ view });
+  if (projectId) params.set("project", projectId);
+  if (id) params.set(view === "notes" ? "note" : "draft", id);
+  return `#${params}`;
+}
 export interface Anchor {
   test?: string | null;
   issue?: string | null;
@@ -16,9 +26,9 @@ export function readRoute() {
     testId: params.get("test") || "",
     issueId: params.get("issue") || "",
     activityId: params.get("activity") || "",
-    section: (view === "settings" || view === "dev" || view === "admin"
-      ? view
-      : "suites") as Section,
+    noteId: params.get("note") || "",
+    draftId: params.get("draft") || "",
+    section: (sections.includes(view as Section) ? view : "suites") as Section,
   };
 }
 export function routeHash(

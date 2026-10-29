@@ -71,6 +71,7 @@ import type {
 import { apiBlob } from "./api";
 import { AttachmentList, attachmentAccept } from "./attachments";
 import { MentionView, mentionEditor, type Mentionable } from "./mentions";
+import { ReferenceLinks, referenceEditor } from "./references";
 import {
   avatarText,
   date,
@@ -90,6 +91,7 @@ const editorExtensions = [
   TaskList,
   TaskItem.configure({ nested: true }),
   MarkdownExtension.configure({ markedOptions: { gfm: true } }),
+  ReferenceLinks,
 ];
 const viewerExtensions = [...editorExtensions, MentionView];
 
@@ -503,6 +505,7 @@ export function MarkdownField({
   placeholder = "",
   actions,
   mentionables,
+  references = false,
   onFiles,
   footer,
 }: {
@@ -516,6 +519,8 @@ export function MarkdownField({
   actions?: ReactNode;
   /** Enables "@" mentions of these people. */
   mentionables?: Mentionable[];
+  /** Enables "#" links to issues and tests. */
+  references?: boolean;
   /** Enables attaching files (button, paste and drop). */
   onFiles?(files: File[]): void;
   /** Rendered inside the field, below the text (e.g. pending attachments). */
@@ -531,9 +536,10 @@ export function MarkdownField({
     () => [
       ...editorExtensions,
       withMentions ? mentionEditor(people) : MentionView,
+      ...(references ? [referenceEditor] : []),
       Placeholder.configure({ placeholder }),
     ],
-    [placeholder, withMentions],
+    [placeholder, withMentions, references],
   );
   const take = (list?: FileList | null) => {
     const selected = [...(list || [])];

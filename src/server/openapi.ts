@@ -15,7 +15,6 @@ import {
   memberRoleInput,
   memberBlockInput,
   keyInput,
-  issueInput,
   issuePatchInput,
   issueArchiveInput,
   issueAssigneesInput,
@@ -24,6 +23,14 @@ import {
   issueStatusInput,
   issueTagInput,
   issueImportInput,
+  issueFromDraftInput,
+  noteInput,
+  notePatchInput,
+  noteFolderInput,
+  noteFolderPatchInput,
+  draftBatchInput,
+  draftPatchInput,
+  draftMoveInput,
 } from "../shared/contracts";
 
 const schema = (value: z.ZodType) =>
@@ -416,8 +423,8 @@ operation(
 operation(
   "/projects/{projectId}/issues",
   "post",
-  "Criar issue; o reporter é sempre quem cria",
-  issueInput,
+  "Criar issue; o reporter é sempre quem cria. Com draftId, o rascunho de quem cria passa a Criado e os seus anexos vão para o issue",
+  issueFromDraftInput,
 );
 operation("/issues/{issueId}", "get", "Obter issue");
 operation(
@@ -508,6 +515,61 @@ operation(
   "Importar issues de uma folha de cálculo já associada (proprietário; Idempotency-Key obrigatório; sem notificações)",
   issueImportInput,
 );
+// Personal area: only the author sees their notes and drafts (administrators and keys included).
+operation("/me/note-folders", "get", "Pastas das minhas notas");
+operation("/me/note-folders", "post", "Criar pasta de notas", noteFolderInput);
+operation(
+  "/me/note-folders/{folderId}",
+  "patch",
+  "Renomear ou mover uma pasta (não para dentro de si própria)",
+  noteFolderPatchInput,
+);
+operation(
+  "/me/note-folders/{folderId}",
+  "delete",
+  "Apagar pasta; as notas e subpastas passam para a pasta acima",
+);
+operation(
+  "/me/notes",
+  "get",
+  "As minhas notas (resumos), com ?q=, ?tag=, ?folderId= ou ?deleted=1 para a reciclagem",
+);
+operation("/me/notes", "post", "Criar nota em Markdown", noteInput);
+operation("/me/note-tags", "get", "Tags das minhas notas, com contagem");
+operation("/me/notes/{noteId}", "get", "Obter nota com anexos");
+operation("/me/notes/{noteId}", "patch", "Editar nota", notePatchInput, true);
+operation(
+  "/me/notes/{noteId}",
+  "delete",
+  "Mover nota para a reciclagem; com ?permanent=1, eliminar de vez uma nota já na reciclagem",
+);
+operation("/me/notes/{noteId}/restore", "post", "Restaurar nota da reciclagem");
+operation(
+  "/me/drafts",
+  "get",
+  "Os meus rascunhos de issues, com ?noteId= ou ?projectId=",
+);
+operation(
+  "/me/drafts",
+  "post",
+  "Criar rascunhos em Por rever (até 50, por exemplo itens de uma nota)",
+  draftBatchInput,
+);
+operation("/me/drafts/{draftId}", "get", "Obter rascunho");
+operation(
+  "/me/drafts/{draftId}",
+  "patch",
+  "Editar rascunho (não depois de Criado)",
+  draftPatchInput,
+  true,
+);
+operation(
+  "/me/drafts/{draftId}/move",
+  "post",
+  "Mover rascunho na board: Por rever, Pronto a criar ou Descartado",
+  draftMoveInput,
+);
+operation("/me/drafts/{draftId}", "delete", "Eliminar rascunho descartado");
 export const openapi = {
   openapi: "3.0.3",
   info: {

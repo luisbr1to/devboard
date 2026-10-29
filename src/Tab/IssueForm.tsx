@@ -1,5 +1,10 @@
 import { useState } from "react";
-import type { Issue, IssueConfig, Member } from "../shared/contracts";
+import type {
+  Issue,
+  IssueConfig,
+  IssueDraft,
+  Member,
+} from "../shared/contracts";
 import { api } from "./api";
 import { Button, ErrorMessage, MarkdownField, Modal } from "./components";
 import {
@@ -10,7 +15,7 @@ import {
 } from "./issueUi";
 import { Select2 } from "./Select2";
 
-/** Create an issue (all fields) or edit its title and description. */
+/** Create an issue (all fields), possibly from a personal draft, or edit its title and description. */
 export function IssueForm({
   projectId,
   issue,
@@ -18,6 +23,7 @@ export function IssueForm({
   members,
   initialStatusId,
   userId,
+  draft,
   onSaved,
   onClose,
 }: {
@@ -27,16 +33,22 @@ export function IssueForm({
   members: Member[];
   initialStatusId?: string;
   userId?: string;
+  /** Prefills the form; the draft is marked as created with the issue. */
+  draft?: IssueDraft;
   onSaved(issue: Issue): void;
   onClose(): void;
 }) {
   const [openedVersion] = useState(issue?.version);
-  const [title, setTitle] = useState(issue?.title ?? "");
-  const [description, setDescription] = useState(issue?.description ?? "");
+  const [title, setTitle] = useState(issue?.title ?? draft?.title ?? "");
+  const [description, setDescription] = useState(
+    issue?.description ?? draft?.description ?? "",
+  );
   const [statusId, setStatusId] = useState(
     initialStatusId || config.statuses[0]?.id || "",
   );
-  const [priority, setPriority] = useState("");
+  const [priority, setPriority] = useState(
+    draft?.priority ? String(draft.priority) : "",
+  );
   const [estimate, setEstimate] = useState("");
   const [assignees, setAssignees] = useState<string[]>([]);
   const [modules, setModules] = useState<string[]>([]);
@@ -74,6 +86,7 @@ export function IssueForm({
                   assigneeIds: assignees,
                   moduleIds: modules,
                   labelIds: labels,
+                  draftId: draft?.id,
                 });
             onSaved(saved);
             onClose();
@@ -175,6 +188,13 @@ export function IssueForm({
               </div>
             </div>
           </>
+        )}
+        {!!draft?.attachments.length && (
+          <p className="muted">
+            {draft.attachments.length === 1
+              ? "O anexo do rascunho será adicionado ao issue."
+              : `Os ${draft.attachments.length} anexos do rascunho serão adicionados ao issue.`}
+          </p>
         )}
         {error && <ErrorMessage message={error} />}
         <div className="form-actions">

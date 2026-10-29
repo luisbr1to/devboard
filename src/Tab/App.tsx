@@ -21,9 +21,11 @@ import {
   ChevronUpDownIcon,
   ClipboardDocumentListIcon,
   Cog6ToothIcon,
+  DocumentTextIcon,
   MagnifyingGlassIcon,
   MoonIcon,
   PlusIcon,
+  RectangleStackIcon,
   ShieldCheckIcon,
   SunIcon,
   ViewColumnsIcon,
@@ -44,9 +46,11 @@ import { initials } from "./presentation";
 import { BrandIcon } from "./BrandIcon";
 import { NotificationCenter } from "./notifications";
 import { AvatarColorMenu } from "./avatarColor";
-import { adminHash, readRoute, route, routeHash } from "./routes";
+import { adminHash, personalHash, readRoute, route, routeHash } from "./routes";
 import { GlobalSearch } from "./search";
 import { IssueList } from "./IssueList";
+import { Notes } from "./Notes";
+import { Drafts } from "./Drafts";
 import { SuiteDetail } from "./SuiteDetail";
 import { SuiteList } from "./SuiteList";
 import { Settings } from "./Settings";
@@ -386,15 +390,20 @@ function Workspace({
     };
   }, []);
   useEffect(() => {
-    if (
-      projects.data &&
-      !current.projectId &&
-      !(admin && current.section === "admin")
-    ) {
-      const first = projects.data[0];
-      if (first) route(first.id);
-    }
-  }, [projects.data, current.projectId, current.section, admin]);
+    const first = projects.data?.[0];
+    if (!first || current.projectId || (admin && current.section === "admin"))
+      return;
+    // Personal pages stay where they are and only pick the sidebar's project.
+    if (current.section === "notes" || current.section === "drafts")
+      location.replace(
+        personalHash(
+          current.section,
+          first.id,
+          current.section === "notes" ? current.noteId : current.draftId,
+        ),
+      );
+    else route(first.id);
+  }, [projects.data, current, admin]);
   useEffect(() => {
     if (!navOpen) return;
     const close = (event: KeyboardEvent) => {
@@ -419,6 +428,9 @@ function Workspace({
   const outsider =
     admin && !!members.data && !members.data.some((item) => item.id === me.id);
   const dev = current.section === "dev";
+  const notes = current.section === "notes";
+  const drafts = current.section === "drafts";
+  const personal = notes || drafts;
   const issueFocus = useMemo(
     () =>
       current.issueId
@@ -508,7 +520,7 @@ function Workspace({
             <a
               className="nav-link"
               href={routeHash(project.id)}
-              aria-current={!settings && !dev ? "page" : undefined}
+              aria-current={current.section === "suites" ? "page" : undefined}
               onClick={() => setNavOpen(false)}
             >
               <ClipboardDocumentListIcon aria-hidden />
@@ -528,6 +540,29 @@ function Workspace({
             </a>
           </nav>
         )}
+        <nav className="sidebar-nav" aria-labelledby="nav-personal">
+          <span className="nav-label" id="nav-personal">
+            Pessoal
+          </span>
+          <a
+            className="nav-link"
+            href={personalHash("notes", current.projectId)}
+            aria-current={notes ? "page" : undefined}
+            onClick={() => setNavOpen(false)}
+          >
+            <DocumentTextIcon aria-hidden />
+            <span>Notas</span>
+          </a>
+          <a
+            className="nav-link"
+            href={personalHash("drafts", current.projectId)}
+            aria-current={drafts ? "page" : undefined}
+            onClick={() => setNavOpen(false)}
+          >
+            <RectangleStackIcon aria-hidden />
+            <span>Rascunhos</span>
+          </a>
+        </nav>
         {admin && (
           <nav className="sidebar-nav" aria-labelledby="nav-app">
             <span className="nav-label" id="nav-app">
@@ -580,34 +615,43 @@ function Workspace({
             onClick={() => setNavOpen((open) => !open)}
           />
           <nav className="breadcrumb" aria-label="Localização">
-            {administration ? (
+            {personal ? (
+              <ol>
+                <li>Pessoal</li>
+                <li aria-current="page">
+                  {notes ? "Notas" : "Rascunhos de issues"}
+                </li>
+              </ol>
+            ) : administration ? (
               <ol>
                 <li aria-current="page">Administração</li>
               </ol>
-            ) : project && (
-              <ol>
-                <li>
-                  <a href={routeHash(project.id)}>{project.name}</a>
-                </li>
-                {settings ? (
-                  <li aria-current="page">Definições</li>
-                ) : dev ? (
-                  <li aria-current="page">Desenvolvimento</li>
-                ) : current.suiteId ? (
-                  <>
-                    <li>
-                      <a href={routeHash(project.id)}>Suites de testes</a>
-                    </li>
-                    <li aria-current="page">
-                      {suiteTitle?.id === current.suiteId
-                        ? suiteTitle.title
-                        : "Suite"}
-                    </li>
-                  </>
-                ) : (
-                  <li aria-current="page">Suites de testes</li>
-                )}
-              </ol>
+            ) : (
+              project && (
+                <ol>
+                  <li>
+                    <a href={routeHash(project.id)}>{project.name}</a>
+                  </li>
+                  {settings ? (
+                    <li aria-current="page">Definições</li>
+                  ) : dev ? (
+                    <li aria-current="page">Desenvolvimento</li>
+                  ) : current.suiteId ? (
+                    <>
+                      <li>
+                        <a href={routeHash(project.id)}>Suites de testes</a>
+                      </li>
+                      <li aria-current="page">
+                        {suiteTitle?.id === current.suiteId
+                          ? suiteTitle.title
+                          : "Suite"}
+                      </li>
+                    </>
+                  ) : (
+                    <li aria-current="page">Suites de testes</li>
+                  )}
+                </ol>
+              )
             )}
           </nav>
           <button
@@ -639,14 +683,28 @@ function Workspace({
                 notificações e poder ser responsável.
               </p>
             )}
-            {project?.role === "viewer" && !settings && (
+            {project?.role === "viewer" && !settings && !personal && (
               <p className="notice read-only-notice">
                 Tem acesso só de leitura neste projeto: pode consultar suites,
                 testes e issues, mas não editar, comentar ou ser responsável.
               </p>
             )}
             {members.error && <ErrorMessage message={members.error} />}
-            {administration ? (
+            {notes ? (
+              <Notes
+                noteId={current.noteId}
+                projectId={current.projectId}
+                projects={projects.data || []}
+                revision={revision}
+              />
+            ) : drafts ? (
+              <Drafts
+                draftId={current.draftId}
+                projectId={current.projectId}
+                projects={projects.data || []}
+                revision={revision}
+              />
+            ) : administration ? (
               <Administration me={me} onChanged={refresh} />
             ) : !projects.data ? (
               <Loading />

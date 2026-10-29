@@ -10,9 +10,9 @@ import type { SearchResults } from "../shared/contracts";
 import { api } from "./api";
 import { Loading, Modal } from "./components";
 import { issueKey, suiteKey, testKey } from "./presentation";
-import { route } from "./routes";
+import { personalHash, readRoute, route } from "./routes";
 
-/** Ctrl+K search over suites, tests (including steps), issues and comments the user can access. */
+/** Ctrl+K search over suites, tests (including steps), issues and comments the user can access, and their own notes. */
 export function GlobalSearch({ onClose }: { onClose(): void }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResults>();
@@ -96,14 +96,15 @@ export function GlobalSearch({ onClose }: { onClose(): void }) {
     !results.suites.length &&
     !results.tests.length &&
     !results.issues.length &&
-    !results.comments.length;
+    !results.comments.length &&
+    !results.notes.length;
   return (
     <Modal title="Procurar" variant="modal" onClose={onClose}>
       <div className="global-search">
         <label className="search-field">
           <MagnifyingGlassIcon aria-hidden />
           <span className="visually-hidden">
-            Procurar suites, testes, issues e comentários
+            Procurar suites, testes, issues, comentários e notas
           </span>
           <input
             type="search"
@@ -199,6 +200,33 @@ export function GlobalSearch({ onClose }: { onClose(): void }) {
                           {issue.projectName}
                           {issue.archived && " · Arquivado"}
                         </small>
+                      </span>
+                    </>,
+                  ),
+                )}
+              </ul>
+            </section>
+          )}
+          {results && results.notes.length > 0 && (
+            <section>
+              <h3 className="section-label">As minhas notas</h3>
+              <ul>
+                {results.notes.map((note) =>
+                  result(
+                    note.id,
+                    () => {
+                      onClose();
+                      location.hash = personalHash(
+                        "notes",
+                        readRoute().projectId,
+                        note.id,
+                      ).slice(1);
+                    },
+                    <>
+                      <span className="mono search-key">Nota</span>
+                      <span className="search-title">
+                        {note.title}
+                        {note.excerpt && <small>{note.excerpt}</small>}
                       </span>
                     </>,
                   ),
