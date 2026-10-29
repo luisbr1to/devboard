@@ -16,6 +16,7 @@ import {
   issuePatchInput,
   issueStatusInput,
   issueTagInput,
+  issueTemplateInput,
   multiFilter,
   boardPreferenceInput,
   boardPreferencePattern,
@@ -186,6 +187,12 @@ async function config(
     statuses: (await load(tables.statuses)) as IssueConfig["statuses"],
     modules: (await load(tables.modules)) as IssueConfig["modules"],
     labels: (await load(tables.labels)) as IssueConfig["labels"],
+    templates: (
+      await db.query(
+        "SELECT id,name,body,version FROM issue_templates WHERE project_id=$1 AND deleted_at IS NULL ORDER BY lower(name),id",
+        [projectId],
+      )
+    ).rows.map(dto) as IssueConfig["templates"],
   };
 }
 async function defaultStatus(db: Connection, projectId: string) {
@@ -490,6 +497,102 @@ export function issueRoutes(router: Router, db: Database) {
     const projectId = id(req, "projectId");
     await projectScope(db, projectId, actorOf(res));
     res.json(await config(db, projectId));
+  });
+  // Description templates: owners manage them, every member loads them in the issue form.
+  const templateDuplicate = () =>
+    new HttpError(409, "Já existe um template com esse nome.");
+  const ownTemplate = async (
+    client: Connection,
+    req: express.Request,
+    actor: Actor,
+  ) => {
+    const templateId = id(req, "templateId");
+    const initial = (
+      await client.query(
+        "SELECT project_id FROM issue_templates WHERE id=$1 AND deleted_at IS NULL",
+        [templateId],
+      )
+    ).rows[0];
+    if (!initial) throw new HttpError(404, "Template não encontrado.");
+    await projectScope(client, initial.project_id, actor, {
+      owner: true,
+      write: true,
+      lock: true,
+    });
+    const row = (
+      await client.query("SELECT * FROM issue_templates WHERE id=$1", [
+        templateId,
+      ])
+    ).rows[0];
+    expectVersion(req, row);
+    return row;
+  };
+  const templateDto = ({
+    project_id: _project,
+    created_at: _created,
+    deleted_at: _deleted,
+    ...row
+  }: Row) => dto(row);
+  router.post("/projects/:projectId/issue-templates", async (req, res) => {
+    const body = issueTemplateInput.parse(req.body);
+    const projectId = id(req, "projectId");
+    const actor = actorOf(res);
+    human(actor);
+    const result = await transaction(db, async (client) => {
+      await projectScope(client, projectId, actor, {
+        owner: true,
+        write: true,
+        lock: true,
+      });
+      try {
+        return templateDto(
+          (
+            await client.query(
+              "INSERT INTO issue_templates(id,project_id,name,body) VALUES($1,$2,$3,$4) RETURNING *",
+              [randomUUID(), projectId, body.name, body.body],
+            )
+          ).rows[0],
+        );
+      } catch (error) {
+        if (uniqueViolation(error)) throw templateDuplicate();
+        throw error;
+      }
+    });
+    res.status(201).json(result);
+  });
+  router.patch("/issue-templates/:templateId", async (req, res) => {
+    const body = issueTemplateInput.parse(req.body);
+    const actor = actorOf(res);
+    human(actor);
+    const result = await transaction(db, async (client) => {
+      const row = await ownTemplate(client, req, actor);
+      try {
+        return templateDto(
+          (
+            await client.query(
+              "UPDATE issue_templates SET name=$2,body=$3,version=version+1 WHERE id=$1 RETURNING *",
+              [row.id, body.name, body.body],
+            )
+          ).rows[0],
+        );
+      } catch (error) {
+        if (uniqueViolation(error)) throw templateDuplicate();
+        throw error;
+      }
+    });
+    res.json(result);
+  });
+  router.delete("/issue-templates/:templateId", async (req, res) => {
+    const actor = actorOf(res);
+    human(actor);
+    await transaction(db, async (client) => {
+      const row = await ownTemplate(client, req, actor);
+      await client.query(
+        "UPDATE issue_templates SET deleted_at=now(),version=version+1 WHERE id=$1",
+        [row.id],
+      );
+    });
+    res.status(204).end();
   });
   for (const kind of Object.keys(tables) as ConfigKind[]) {
     const table = tables[kind];

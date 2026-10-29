@@ -141,7 +141,7 @@ export function IssuePanel({
           : detail.duplicateOf
             ? `criou o issue como cópia de ${issueKey(detail.duplicateOf)}`
             : detail.draft
-              ? "criou o issue a partir de um rascunho"
+              ? "criou o issue a partir de uma tarefa"
               : undefined;
       default:
         return undefined;

@@ -2734,6 +2734,31 @@ input[type="checkbox"] {
 .steps-editor > .btn {
   align-self: flex-start;
 }
+/* Steps of a personal task: a check before each text. */
+.task-steps li {
+  grid-template-columns: 24px minmax(0, 1fr) repeat(3, auto);
+}
+.task-steps input[type="checkbox"] {
+  margin-top: 10px;
+  justify-self: center;
+}
+.task-steps li.done textarea,
+.task-steps-done li.done {
+  color: var(--text-3);
+  text-decoration: line-through;
+}
+.task-steps-done {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.task-steps-done li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
 
 /* Anchor from notifications and search */
 .timeline > li > .timeline-entry {
@@ -3554,7 +3579,7 @@ input[type="checkbox"] {
     scrollbar-color: auto;
   }
   .board::-webkit-scrollbar {
-    height: 10px;
+    height: 12px;
   }
   .board-cards::-webkit-scrollbar {
     width: 8px;
@@ -3568,6 +3593,14 @@ input[type="checkbox"] {
     border: 3px solid transparent;
     border-radius: var(--radius-full);
     background: var(--border) padding-box;
+  }
+  /* The board's own bar stays visible: it is the way to the columns off screen. */
+  .board::-webkit-scrollbar-thumb {
+    background-color: var(--border-strong);
+  }
+  .board::-webkit-scrollbar-track {
+    border-radius: var(--radius-full);
+    background: var(--sunken);
   }
   .board:hover::-webkit-scrollbar-thumb,
   .board-cards:hover::-webkit-scrollbar-thumb {
@@ -4253,9 +4286,9 @@ button.note-tag {
   color: var(--text-3);
   font-size: 12px;
 }
+/* Tasks use the issue board's layout: columns side by side, scrolling sideways. */
 .draft-board {
-  grid-template-columns: repeat(4, minmax(260px, 1fr));
-  grid-auto-flow: row;
+  grid-auto-columns: minmax(280px, 1fr);
 }
 .draft-column-created .board-card,
 .draft-column-discarded .board-card {
@@ -4283,19 +4316,24 @@ button.note-tag {
   width: 14px;
   height: 14px;
 }
-/* Five state tabs: on narrow screens the row scrolls instead of the page. */
-.draft-tabs {
-  max-width: 100%;
-  overflow-x: auto;
+/* A ticked step of a task, in the drawer's reading mode. */
+.step-done .step-text {
+  color: var(--text-3);
+  text-decoration: line-through;
 }
-.draft-tabs .tabs {
-  min-width: max-content;
+.result-button.task-state-todo[aria-pressed="true"] {
+  background: var(--pend-bg);
+  color: var(--pend-fg);
 }
-.draft-tabs .tab {
-  white-space: nowrap;
+.result-button.task-state-doing[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  background: var(--accent-soft);
+  color: var(--accent-text);
 }
-.draft-filter {
-  width: min(280px, 100%);
+.result-button.task-state-done[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--pass-fg) 40%, transparent);
+  background: var(--pass-bg);
+  color: var(--pass-fg);
 }
 .reference-key {
   flex: none;
@@ -4330,9 +4368,6 @@ button.note-tag {
     padding: var(--space-4);
   }
   .note-meta {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .draft-board {
     grid-template-columns: minmax(0, 1fr);
   }
 }

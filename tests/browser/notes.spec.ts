@@ -78,6 +78,14 @@ async function mockApp(page: Page) {
         ],
         modules: [],
         labels: [],
+        templates: [
+          {
+            id: "61000000-0000-4000-8000-000000000001",
+            name: "Pedido de suporte",
+            body: "## Cliente",
+            version: 1,
+          },
+        ],
       };
     else if (path === `/projects/${project.id}/issues` && method === "POST") {
       status = 201;
@@ -159,7 +167,8 @@ async function mockApp(page: Page) {
           title: item.title,
           description: item.description ?? "",
           priority: data.priority,
-          state: "review",
+          steps: item.steps ?? [],
+          state: "todo",
           position: drafts.length,
           issueId: null,
           issueNumber: null,
@@ -254,16 +263,14 @@ test("a daily pasted in a personal note becomes drafts on the board and then an 
   await page
     .getByRole("button", { name: "Ações da nota", exact: true })
     .click();
-  await page
-    .getByRole("menuitem", { name: "Criar rascunhos de issues" })
-    .click();
+  await page.getByRole("menuitem", { name: "Criar tarefas" }).click();
   const dialog = page.getByRole("dialog", {
-    name: "Criar rascunhos de issues",
+    name: "Criar tarefas",
   });
   await expect(dialog.getByRole("checkbox")).toHaveCount(2);
   await dialog.getByRole("checkbox", { name: /Rever pagamentos/ }).uncheck();
-  await dialog.getByRole("button", { name: "Criar 1 rascunho" }).click();
-  await expect(dialog.getByText("Foi criado 1 rascunho")).toBeVisible();
+  await dialog.getByRole("button", { name: "Criar 1 tarefa" }).click();
+  await expect(dialog.getByText("Foi criada 1 tarefa")).toBeVisible();
   const batch = saved.find((item) => item.path === "/me/drafts")!.data;
   expect(batch.projectId).toBe(project.id);
   expect(batch.items).toEqual([
@@ -274,13 +281,13 @@ test("a daily pasted in a personal note becomes drafts on the board and then an 
     },
   ]);
   await dialog
-    .getByRole("button", { name: "Abrir a board de rascunhos" })
+    .getByRole("button", { name: "Abrir a board de tarefas" })
     .click();
 
   await expect(
-    page.getByRole("heading", { name: "Rascunhos de issues" }),
+    page.getByRole("heading", { name: "Tarefas", exact: true }),
   ).toBeVisible();
-  const review = page.getByRole("listitem", { name: "Por rever: 1 rascunhos" });
+  const review = page.getByRole("listitem", { name: "Por fazer: 1 tarefas" });
   await expect(review).toContainText("Daily 26/10");
   await expect(review).toContainText(project.name);
   await review.getByRole("button", { name: /^Corrigir o checkout/ }).click();
@@ -288,6 +295,7 @@ test("a daily pasted in a personal note becomes drafts on the board and then an 
   await drawer
     .getByRole("textbox", { name: "Título" })
     .fill("Corrigir o checkout");
+  await drawer.getByRole("button", { name: "Guardar" }).click();
   await drawer.getByRole("button", { name: "Criar issue" }).click();
   const form = page.getByRole("dialog", { name: "Novo issue" });
   await expect(form.getByRole("textbox", { name: "Título" })).toHaveValue(
@@ -304,7 +312,7 @@ test("a daily pasted in a personal note becomes drafts on the board and then an 
   });
   await page.keyboard.press("Escape");
   await expect(
-    page.getByRole("listitem", { name: "Criado: 1 rascunhos" }),
+    page.getByRole("listitem", { name: "Issue criado: 1 tarefas" }),
   ).toContainText("IS-8");
 });
 
@@ -333,9 +341,9 @@ for (const theme of ["light", "dark"] as const)
       )
       .toBe(true);
     await page.getByRole("button", { name: "Abrir navegação" }).click();
-    await page.getByRole("link", { name: "Rascunhos" }).click();
+    await page.getByRole("link", { name: "Tarefas" }).click();
     await expect(
-      page.getByRole("listitem", { name: "Por rever: 0 rascunhos" }),
+      page.getByRole("listitem", { name: "Por fazer: 0 tarefas" }),
     ).toBeVisible();
     await expect
       .poll(() =>
@@ -345,7 +353,6 @@ for (const theme of ["light", "dark"] as const)
       )
       .toBe(true);
     await page.getByRole("button", { name: "Tabela", exact: true }).click();
-    await page.getByRole("tab", { name: /^Todos/ }).click();
     await expect
       .poll(() =>
         page.evaluate(
@@ -370,46 +377,57 @@ test("a direct link to the notes keeps the page and picks the sidebar's project"
     page.getByRole("link", { name: /Desenvolvimento/ }),
   ).toBeVisible();
 });
-test("drafts can also be listed in a table, by state, like the issues", async ({
+test("tasks can also be listed in a table, by state, like the issues", async ({
   page,
 }) => {
   const { drafts, preferences } = await mockApp(page);
   await page.goto("/");
   await page.getByRole("button", { name: "Entrar localmente" }).click();
-  await page.getByRole("link", { name: "Rascunhos" }).click();
+  await page.getByRole("link", { name: "Tarefas" }).click();
   for (const title of ["Rever pagamentos", "Atualizar documentação"]) {
-    await page.getByRole("button", { name: "Novo rascunho" }).click();
-    const dialog = page.getByRole("dialog", { name: "Novo rascunho" });
+    await page.getByRole("button", { name: "Nova tarefa" }).click();
+    const dialog = page.getByRole("dialog", { name: "Nova tarefa" });
     await dialog.getByRole("textbox", { name: "Título" }).fill(title);
-    await dialog.getByRole("button", { name: "Criar rascunho" }).click();
+    await dialog.getByRole("button", { name: "Criar tarefa" }).click();
     await page.getByRole("dialog", { name: title }).waitFor();
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog")).toHaveCount(0);
   }
   await page
-    .getByRole("list", { name: "Board de rascunhos" })
+    .getByRole("list", { name: "Board de tarefas" })
     .getByRole("button", { name: "Ações de Atualizar documentação" })
     .click();
-  await page
-    .getByRole("menuitem", { name: "Mover para Pronto a criar" })
-    .click();
-  await expect.poll(() => drafts[1].state).toBe("ready");
+  await page.getByRole("menuitem", { name: "Mover para Em curso" }).click();
+  await expect.poll(() => drafts[1].state).toBe("doing");
   await page.getByRole("button", { name: "Tabela", exact: true }).click();
   await expect.poll(() => preferences["drafts.view"]).toBe("table");
-  const tabs = page.getByRole("tablist", { name: "Estado dos rascunhos" });
-  await expect(tabs.getByRole("tab", { name: "Por rever 1" })).toBeVisible();
-  await tabs.getByRole("tab", { name: "Todos 2" }).click();
+  // One table, like the issues: the states are a filter, not tabs.
+  await expect(page.getByRole("tablist")).toHaveCount(0);
   const rows = page.locator(".draft-table tbody tr");
   await expect(rows).toHaveCount(2);
-  await expect(rows.first()).toContainText("Por rever");
+  await page
+    .getByRole("button", { name: "Ordenar tarefas: Atualização recente" })
+    .click();
+  await page.getByRole("menuitemradio", { name: "Estado" }).click();
+  await expect(rows.first()).toContainText("Por fazer");
   await expect(rows.first()).toContainText(project.name);
-  await expect(rows.nth(1)).toContainText("Pronto a criar");
+  await expect(rows.nth(1)).toContainText("Em curso");
+  await page.getByRole("button", { name: "Filtrar por estado: Todos" }).click();
+  await page.getByRole("menuitemcheckbox", { name: "Em curso" }).click();
+  await page.keyboard.press("Escape");
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText("Atualizar documentação");
+  await page
+    .getByRole("button", { name: "Filtrar por estado: Em curso" })
+    .click();
+  await page.getByRole("menuitem", { name: "Limpar seleção" }).click();
+  await expect(rows).toHaveCount(2);
   // Moving from the row menu, as on the board.
   await page.getByRole("button", { name: "Ações de Rever pagamentos" }).click();
   await page.getByRole("menuitem", { name: "Mover para Descartado" }).click();
   await expect.poll(() => drafts[0].state).toBe("discarded");
   await page
-    .getByRole("row", { name: "Abrir rascunho Atualizar documentação" })
+    .getByRole("row", { name: "Abrir tarefa Atualizar documentação" })
     .click();
   await expect(
     page.getByRole("dialog", { name: "Atualizar documentação" }),
@@ -484,4 +502,81 @@ test("notes are edited, moved and recycled from the sidebar, or dragged into fol
   await page.getByRole("menuitem", { name: "Mover para a reciclagem" }).click();
   await expect.poll(() => notes[0].deletedAt).not.toBeNull();
   await expect(page.getByRole("link", { name: "Daily" })).toHaveCount(0);
+});
+
+test("a task has steps to tick, loads a template and becomes an issue with them as a checklist", async ({
+  page,
+}) => {
+  const { drafts, saved } = await mockApp(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Entrar localmente" }).click();
+  await page.getByRole("link", { name: "Tarefas" }).click();
+  // «Nova tarefa» opens the whole task in a drawer, steps after the description.
+  await page.getByRole("button", { name: "Nova tarefa" }).click();
+  const dialog = page.getByRole("dialog", { name: "Nova tarefa" });
+  await dialog
+    .getByRole("textbox", { name: "Título" })
+    .fill("Checkout no Safari");
+  await dialog.getByRole("button", { name: "Adicionar passo" }).click();
+  await dialog.getByRole("textbox", { name: "Passo 1" }).fill("Reproduzir");
+  // Enter adds the next step.
+  await page.keyboard.press("Enter");
+  await dialog.getByRole("textbox", { name: "Passo 2" }).fill("Corrigir");
+  await dialog.getByRole("button", { name: "Criar tarefa" }).click();
+  const panel = page.getByRole("dialog", { name: "Checkout no Safari" });
+  await expect
+    .poll(() => drafts[0]?.steps)
+    .toEqual([
+      { body: "Reproduzir", done: false },
+      { body: "Corrigir", done: false },
+    ]);
+  // Saving leaves a reading view like a test's: numbered steps ticked at once.
+  await expect(panel.getByRole("textbox", { name: "Título" })).toHaveCount(0);
+  await panel.getByRole("button", { name: "Passo 1: feito" }).click();
+  await expect.poll(() => drafts[0].steps[0].done).toBe(true);
+  await expect(panel.getByText("1/2 feitos")).toBeVisible();
+  // The state is changed from the bar at the bottom, without an issue.
+  const states = panel.getByRole("group", { name: "Estado" });
+  await states.getByRole("button", { name: "Em curso" }).click();
+  await expect.poll(() => drafts[0].state).toBe("doing");
+  await expect(
+    states.getByRole("button", { name: "Em curso" }),
+  ).toHaveAttribute("aria-pressed", "true");
+
+  // Templates: the built-in ones and the project's own; the description starts empty.
+  await panel.getByRole("button", { name: "Editar tarefa" }).click();
+  const description = panel.getByRole("textbox", { name: "Descrição" });
+  await expect(description).toHaveText("");
+  await panel.getByRole("combobox", { name: "Template" }).click();
+  await expect(
+    page.getByRole("option", { name: "Pedido de suporte" }),
+  ).toBeVisible();
+  await page.getByRole("option", { name: "Reportar bug" }).click();
+  await expect(
+    description.getByRole("heading", { name: "Passos para reproduzir" }),
+  ).toBeVisible();
+  // Replacing text the person wrote asks first.
+  await description.click();
+  await page.keyboard.press("Control+End");
+  await page.keyboard.type(" Visto no iPhone.");
+  await panel.getByRole("combobox", { name: "Template" }).click();
+  await page.getByRole("option", { name: "Nova funcionalidade" }).click();
+  const confirm = page.getByRole("dialog", { name: "Substituir a descrição" });
+  await confirm.getByRole("button", { name: "Cancelar" }).click();
+  await expect(description).toContainText("Visto no iPhone.");
+  await panel.getByRole("button", { name: "Guardar" }).click();
+
+  await panel.getByRole("button", { name: "Criar issue" }).click();
+  const form = page.getByRole("dialog", { name: "Novo issue" });
+  await form.getByRole("button", { name: "Criar issue" }).click();
+  await expect(panel.getByText("Deu origem a IS-8")).toBeVisible();
+  const created = saved.find(
+    (item) => item.path === `/projects/${project.id}/issues`,
+  )!.data;
+  expect(created.description).toContain("## Resultado esperado");
+  expect(created.description).toContain("Visto no iPhone.");
+  expect(created.description).toContain("1. Abrir …");
+  expect(created.description).toContain(
+    "## Passos\n\n- [x] Reproduzir\n- [ ] Corrigir",
+  );
 });

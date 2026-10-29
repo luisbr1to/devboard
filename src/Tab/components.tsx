@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type ComponentPropsWithRef,
+  type DragEvent,
   type KeyboardEvent,
   type MouseEvent,
   type ReactElement,
@@ -759,6 +760,14 @@ export interface OverflowAction {
   onClick(): void;
 }
 
+/** While a card is dragged near a board's left or right edge, scrolls the board so far columns can be reached. */
+export function scrollBoardNearEdge(event: DragEvent<HTMLElement>) {
+  const board = event.currentTarget;
+  const { left, right } = board.getBoundingClientRect();
+  const edge = Math.min(96, (right - left) / 5);
+  if (event.clientX < left + edge) board.scrollLeft -= 24;
+  else if (event.clientX > right - edge) board.scrollLeft += 24;
+}
 export function OverflowActions({
   label = "Mais ações",
   actions,

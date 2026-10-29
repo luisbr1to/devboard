@@ -6,8 +6,11 @@ import {
   ArrowTopRightOnSquareIcon,
   ArrowUpIcon,
   ArrowUturnLeftIcon,
+  CheckCircleIcon,
+  CheckIcon,
   DocumentTextIcon,
   PaperClipIcon,
+  PencilSquareIcon,
   PlusIcon,
   RocketLaunchIcon,
   TableCellsIcon,
@@ -17,6 +20,7 @@ import {
 import {
   draftStateLabels,
   type DraftState,
+  type DraftStep,
   type IssueColor,
   type IssueConfig,
   type IssueDraft,
@@ -34,27 +38,32 @@ import {
   Confirm,
   Empty,
   ErrorMessage,
+  IconButton,
   Loading,
   Markdown,
   MarkdownField,
   Modal,
   OverflowActions,
   SearchField,
-  Tabs,
+  FilterMenu,
+  MultiFilterMenu,
+  scrollBoardNearEdge,
   type OverflowAction,
 } from "./components";
 import { IssueForm } from "./IssueForm";
-import { Priority, priorityOptions } from "./issueUi";
+import { Priority, priorityLabels, priorityOptions } from "./issueUi";
 import { projectOptions } from "./Notes";
 import { issueKey, plainSnippet, shortDate } from "./presentation";
 import { personalHash, routeHash } from "./routes";
 import { Select2 } from "./Select2";
+import { TemplatePicker } from "./templates";
 
-const columns: DraftState[] = ["review", "ready", "created", "discarded"];
+const columns: DraftState[] = ["todo", "doing", "done", "created", "discarded"];
 const stateColors: Record<DraftState, IssueColor> = {
-  review: "amber",
-  ready: "blue",
-  created: "green",
+  todo: "amber",
+  doing: "blue",
+  done: "green",
+  created: "purple",
   discarded: "gray",
 };
 type Movable = Exclude<DraftState, "created">;
@@ -84,11 +93,41 @@ function StateTag({ state }: { state: DraftState }) {
     </span>
   );
 }
+/** "2/5" checked steps, shown on cards and rows of tasks with steps. */
+function StepProgress({ steps }: { steps: DraftStep[] }) {
+  if (!steps.length) return null;
+  const done = steps.filter((step) => step.done).length;
+  return (
+    <span
+      className="board-card-comments mono"
+      title={`${done} de ${steps.length} passos feitos`}
+    >
+      <CheckCircleIcon aria-hidden />
+      {done}/{steps.length}
+    </span>
+  );
+}
+/** The steps go to the end of the issue's description as a Markdown checklist. */
+const withSteps = (description: string, steps: DraftStep[]) =>
+  steps.length
+    ? [
+        description.trim(),
+        "## Passos",
+        steps
+          .map(
+            (step) =>
+              `- [${step.done ? "x" : " "}] ${step.body.replace(/\s+/g, " ")}`,
+          )
+          .join("\n"),
+      ]
+        .filter(Boolean)
+        .join("\n\n")
+    : description;
 const projectText = (draft: IssueDraft) =>
   draft.projectName ||
   (draft.projectId ? "Projeto indisponível" : "Sem projeto");
 
-/** "Criado" shows the latest first; the other columns keep the person's order. */
+/** «Issue criado» shows the latest first; the other columns keep the person's order. */
 const columnOf = (drafts: IssueDraft[], state: DraftState) =>
   drafts
     .filter((draft) => draft.state === state)
@@ -98,7 +137,23 @@ const columnOf = (drafts: IssueDraft[], state: DraftState) =>
         : a.position - b.position,
     );
 
-/** The person's issue drafts, as a table or a board: Por rever → Pronto a criar → Criado / Descartado. */
+type TaskSort = "updated" | "created" | "state" | "priority" | "title";
+const taskOrder: Record<TaskSort, (a: IssueDraft, b: IssueDraft) => number> = {
+  updated: (a, b) => b.updatedAt.localeCompare(a.updatedAt),
+  created: (a, b) => b.createdAt.localeCompare(a.createdAt),
+  state: (a, b) =>
+    columns.indexOf(a.state) - columns.indexOf(b.state) ||
+    a.position - b.position,
+  priority: (a, b) =>
+    (a.priority ?? 9) - (b.priority ?? 9) ||
+    b.updatedAt.localeCompare(a.updatedAt),
+  title: (a, b) => a.title.localeCompare(b.title, "pt-PT"),
+};
+
+/**
+ * The person's tasks (stored as issue drafts), as a table or a board: Por fazer →
+ * Em curso → Concluído, or turned into an issue (Issue criado), or Descartado.
+ */
 export function Drafts({
   draftId,
   projectId,
@@ -115,7 +170,9 @@ export function Drafts({
   const drafts = useRemote<IssueDraft[]>("/me/drafts", revision + changes);
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
-  const [tab, setTab] = useState<DraftState | "all">("review");
+  const [states, setStates] = useState<DraftState[]>([]);
+  const [priority, setPriority] = useState("all");
+  const [sort, setSort] = useState<TaskSort>("updated");
   const preferences = useRemote<Record<string, unknown>>("/me/preferences", 0);
   const [view, setView] = useState<"table" | "board">();
   const activeView =
@@ -125,6 +182,8 @@ export function Drafts({
   const open = (id = "") => {
     location.hash = personalHash("drafts", projectId, id).slice(1);
   };
+  // Search, project and priority apply to both views; the state filter and the
+  // order only to the table, where the board's columns are the states.
   const visible = useMemo(() => {
     const search = query.trim().toLocaleLowerCase("pt-PT");
     return (drafts.data || []).filter(
@@ -133,12 +192,23 @@ export function Drafts({
           (filter === "none"
             ? !draft.projectId
             : draft.projectId === filter)) &&
+        (priority === "all" ||
+          (priority === "none"
+            ? !draft.priority
+            : draft.priority === Number(priority))) &&
         (!search ||
           `${draft.title} ${draft.description}`
             .toLocaleLowerCase("pt-PT")
             .includes(search)),
     );
-  }, [drafts.data, filter, query]);
+  }, [drafts.data, filter, priority, query]);
+  const rows = useMemo(
+    () =>
+      visible
+        .filter((draft) => !states.length || states.includes(draft.state))
+        .sort(taskOrder[sort]),
+    [visible, states, sort],
+  );
   const move = async (draft: IssueDraft, state: Movable, position: number) => {
     setError("");
     try {
@@ -152,10 +222,11 @@ export function Drafts({
     <>
       <div className="page-heading">
         <div>
-          <h1>Rascunhos de issues</h1>
+          <h1>Tarefas</h1>
           <p>
-            Só seus. Crie-os a partir dos itens de uma nota e transforme-os em
-            issues quando estiverem prontos.
+            Só suas. Organize o dia com tarefas e passos para marcar, criadas à
+            mão ou a partir dos itens de uma nota, e transforme em issue as que
+            o forem.
           </p>
         </div>
         <Button
@@ -163,31 +234,11 @@ export function Drafts({
           icon={<PlusIcon />}
           onClick={() => setCreating(true)}
         >
-          Novo rascunho
+          Nova tarefa
         </Button>
       </div>
-      <div className="toolbar">
-        <SearchField
-          label="Pesquisar rascunhos"
-          placeholder="Filtrar pelo título ou descrição…"
-          value={query}
-          onChange={setQuery}
-        />
-        <div className="draft-filter">
-          <Select2
-            label="Filtrar por projeto"
-            value={filter}
-            options={[
-              { value: "all", label: "Todos os projetos" },
-              { value: "none", label: "Sem projeto" },
-              ...projects.map((project) => ({
-                value: project.id,
-                label: project.name,
-              })),
-            ]}
-            onChange={setFilter}
-          />
-        </div>
+      <div className="issue-tabs">
+        <h2 className="section-label">Todas as tarefas</h2>
         <div
           className="view-switch"
           role="group"
@@ -217,49 +268,94 @@ export function Drafts({
           ))}
         </div>
       </div>
+      <div className="toolbar">
+        <SearchField
+          label="Pesquisar tarefas"
+          placeholder="Filtrar pelo título ou descrição…"
+          value={query}
+          onChange={setQuery}
+        />
+        <div className="toolbar-filters">
+          {activeView === "table" && (
+            <MultiFilterMenu
+              name="state"
+              label="Estado"
+              ariaLabel="Filtrar por estado"
+              value={states}
+              onChange={setStates}
+              options={columns.map((state) => ({
+                value: state,
+                label: draftStateLabels[state],
+              }))}
+            />
+          )}
+          <FilterMenu
+            name="project"
+            label="Projeto"
+            ariaLabel="Filtrar por projeto"
+            value={filter}
+            onChange={setFilter}
+            options={[
+              { value: "all", label: "Todos" },
+              { value: "none", label: "Sem projeto" },
+              ...projects.map((project) => ({
+                value: project.id,
+                label: project.name,
+              })),
+            ]}
+          />
+          <FilterMenu
+            name="priority"
+            label="Prioridade"
+            ariaLabel="Filtrar por prioridade"
+            value={priority}
+            onChange={setPriority}
+            options={[
+              { value: "all", label: "Todas" },
+              ...[1, 2, 3, 4, 5].map((value) => ({
+                value: String(value),
+                label: priorityLabels[value],
+              })),
+              { value: "none", label: "Sem prioridade" },
+            ]}
+          />
+          {activeView === "table" && (
+            <FilterMenu
+              sort
+              name="sort"
+              label="Ordenação"
+              ariaLabel="Ordenar tarefas"
+              value={sort}
+              onChange={(value) => setSort(value as TaskSort)}
+              options={[
+                { value: "updated", label: "Atualização recente" },
+                { value: "created", label: "Criação recente" },
+                { value: "state", label: "Estado" },
+                { value: "priority", label: "Prioridade" },
+                { value: "title", label: "Título (A–Z)" },
+              ]}
+            />
+          )}
+        </div>
+      </div>
       {error && <ErrorMessage message={error} />}
       {drafts.error && <ErrorMessage message={drafts.error} />}
       {!drafts.data || (!view && preferences.loading) ? (
         <Loading />
       ) : activeView === "table" ? (
-        <>
-          <div className="draft-tabs">
-            <Tabs<DraftState | "all">
-              label="Estado dos rascunhos"
-              value={tab}
-              onChange={setTab}
-              tabs={[
-                ...columns.map((state) => ({
-                  value: state,
-                  label: draftStateLabels[state],
-                  count: visible.filter((draft) => draft.state === state)
-                    .length,
-                })),
-                {
-                  value: "all" as const,
-                  label: "Todos",
-                  count: visible.length,
-                },
-              ]}
-            />
-          </div>
-          <DraftTable
-            drafts={
-              tab === "all"
-                ? columns.flatMap((state) => columnOf(visible, state))
-                : columnOf(visible, tab)
-            }
-            projectId={projectId}
-            onOpen={open}
-            actions={(draft) =>
-              stateActions(
-                draft,
-                (state) => columnOf(drafts.data!, state).length,
-                (item, state, index) => void move(item, state, index),
-              )
-            }
-          />
-        </>
+        <DraftTable
+          drafts={rows}
+          filtered={rows.length < (drafts.data?.length ?? 0)}
+          projectId={projectId}
+          onOpen={open}
+          actions={(draft) =>
+            stateActions(
+              draft,
+              (state) => columnOf(drafts.data!, state).length,
+              (item, state, index) => void move(item, state, index),
+            )
+          }
+        />
       ) : (
         <DraftBoard drafts={visible} onOpen={open} onMove={move} />
       )}
@@ -329,8 +425,9 @@ function DraftBoard({
   return (
     <div
       className="board draft-board"
+      onDragOver={scrollBoardNearEdge}
       role="list"
-      aria-label="Board de rascunhos"
+      aria-label="Board de tarefas"
     >
       {columns.map((state) => {
         const cards = column(state);
@@ -346,7 +443,7 @@ function DraftBoard({
               .filter(Boolean)
               .join(" ")}
             role="listitem"
-            aria-label={`${draftStateLabels[state]}: ${cards.length} rascunhos`}
+            aria-label={`${draftStateLabels[state]}: ${cards.length} tarefas`}
             onDragOver={(event) => {
               if (!dragged || !droppable) return;
               event.preventDefault();
@@ -454,6 +551,7 @@ function DraftBoard({
                       ) : (
                         <span />
                       )}
+                      <StepProgress steps={draft.steps} />
                       {draft.attachments.length > 0 && (
                         <span
                           className="board-card-comments mono"
@@ -474,9 +572,7 @@ function DraftBoard({
                 );
               })}
             </ol>
-            {!cards.length && (
-              <p className="board-empty muted">Sem rascunhos</p>
-            )}
+            {!cards.length && <p className="board-empty muted">Sem tarefas</p>}
           </section>
         );
       })}
@@ -486,19 +582,26 @@ function DraftBoard({
 
 function DraftTable({
   drafts,
+  filtered,
   projectId,
   onOpen,
   actions,
 }: {
   drafts: IssueDraft[];
+  /** Some tasks are hidden by the search or the filters. */
+  filtered: boolean;
   projectId: string;
   onOpen(id: string): void;
   actions(draft: IssueDraft): OverflowAction[];
 }) {
   if (!drafts.length)
-    return (
-      <Empty title="Sem rascunhos">
-        Crie rascunhos a partir dos itens de uma nota ou com «Novo rascunho».
+    return filtered ? (
+      <Empty title="Nenhuma tarefa encontrada">
+        Mude a pesquisa ou os filtros para ver outras tarefas.
+      </Empty>
+    ) : (
+      <Empty title="Sem tarefas">
+        Crie tarefas a partir dos itens de uma nota ou com «Nova tarefa».
       </Empty>
     );
   return (
@@ -507,7 +610,7 @@ function DraftTable({
         <table className="data-table draft-table">
           <thead>
             <tr>
-              <th>Rascunho</th>
+              <th>Tarefa</th>
               <th>Estado</th>
               <th>Projeto</th>
               <th>Prioridade</th>
@@ -528,7 +631,7 @@ function DraftTable({
                   key={draft.id}
                   className="clickable-row"
                   tabIndex={0}
-                  aria-label={`Abrir rascunho ${draft.title}`}
+                  aria-label={`Abrir tarefa ${draft.title}`}
                   onClick={() => onOpen(draft.id)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
@@ -540,6 +643,7 @@ function DraftTable({
                   <td>
                     <strong className="row-title">
                       {draft.title}
+                      <StepProgress steps={draft.steps} />
                       {draft.attachments.length > 0 && (
                         <span
                           className="board-card-comments mono"
@@ -616,6 +720,7 @@ function DraftTable({
   );
 }
 
+/** «Nova tarefa» opens the whole task in a drawer; files are added once it exists. */
 function NewDraft({
   projects,
   projectId,
@@ -627,17 +732,23 @@ function NewDraft({
   onClose(): void;
   onCreated(draft: IssueDraft): void;
 }) {
-  const [title, setTitle] = useState("");
   const writable = projects.some(
     (project) => project.id === projectId && project.role !== "viewer",
   );
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
   const [project, setProject] = useState(writable ? projectId : "");
+  const [priority, setPriority] = useState("");
+  const [steps, setSteps] = useState<DraftStep[]>([]);
+  const templates = useRemote<IssueConfig>(
+    project ? `/projects/${project}/issue-config` : null,
+    0,
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   return (
     <Modal
-      title="Novo rascunho"
-      variant="modal"
+      title="Nova tarefa"
       onClose={() => {
         if (!busy) onClose();
       }}
@@ -650,7 +761,16 @@ function NewDraft({
           try {
             const [draft] = await api<IssueDraft[]>("/me/drafts", "POST", {
               projectId: project || null,
-              items: [{ title }],
+              priority: priority ? Number(priority) : null,
+              items: [
+                {
+                  title,
+                  description,
+                  steps: steps
+                    .map((step) => ({ ...step, body: step.body.trim() }))
+                    .filter((step) => step.body),
+                },
+              ],
             });
             onClose();
             onCreated(draft);
@@ -671,14 +791,37 @@ function NewDraft({
             onChange={(event) => setTitle(event.target.value)}
           />
         </label>
-        <div className="field">
-          <Select2
-            showLabel
-            label="Projeto"
-            value={project}
-            options={projectOptions(projects)}
-            onChange={setProject}
-          />
+        <TemplatePicker
+          templates={templates.data?.templates || []}
+          description={description}
+          onLoad={setDescription}
+        />
+        <MarkdownField
+          label="Descrição"
+          value={description}
+          onChange={setDescription}
+          references
+        />
+        <TaskSteps steps={steps} onChange={setSteps} />
+        <div className="form-grid">
+          <div className="field">
+            <Select2
+              showLabel
+              label="Projeto"
+              value={project}
+              options={projectOptions(projects)}
+              onChange={setProject}
+            />
+          </div>
+          <div className="field">
+            <Select2
+              showLabel
+              label="Prioridade"
+              value={priority}
+              options={priorityOptions}
+              onChange={setPriority}
+            />
+          </div>
         </div>
         {error && <ErrorMessage message={error} />}
         <div className="form-actions">
@@ -686,7 +829,7 @@ function NewDraft({
             Cancelar
           </Button>
           <Button variant="primary" type="submit" disabledFocusable={busy}>
-            {busy ? "A criar…" : "Criar rascunho"}
+            {busy ? "A criar…" : "Criar tarefa"}
           </Button>
         </div>
       </form>
@@ -694,7 +837,17 @@ function NewDraft({
   );
 }
 
-/** Edits a draft and turns it into an issue of its project. */
+/** States a task moves through by hand, shown as a bar at the bottom of the drawer. */
+const taskStates: { state: Movable; label: string }[] = [
+  { state: "todo", label: "Por fazer" },
+  { state: "doing", label: "Em curso" },
+  { state: "done", label: "Concluído" },
+];
+
+/**
+ * A task in a drawer like a test of a suite: details, description and numbered
+ * steps to tick, with the state at the bottom. «Editar» opens the fields.
+ */
 function DraftPanel({
   draftId,
   projects,
@@ -715,13 +868,34 @@ function DraftPanel({
   const [description, setDescription] = useState("");
   const [project, setProject] = useState("");
   const [priority, setPriority] = useState("");
+  const [steps, setSteps] = useState<DraftStep[]>([]);
+  const [editing, setEditing] = useState<boolean>();
+  const reset = (current: IssueDraft) => {
+    setTitle(current.title);
+    setDescription(current.description);
+    setProject(current.projectId || "");
+    setPriority(current.priority ? String(current.priority) : "");
+    setSteps(current.steps);
+  };
   useEffect(() => {
     if (!draft) return;
-    setTitle(draft.title);
-    setDescription(draft.description);
-    setProject(draft.projectId || "");
-    setPriority(draft.priority ? String(draft.priority) : "");
+    reset(draft);
+    // A task with nothing written yet opens for editing.
+    setEditing(
+      (current) =>
+        current ??
+        (draft.state !== "created" &&
+          !draft.description.trim() &&
+          !draft.steps.length),
+    );
   }, [draft]);
+  // Templates of the chosen project, besides the built-in ones.
+  const templates = useRemote<IssueConfig>(
+    editing && projects.some((item) => item.id === project)
+      ? `/projects/${project}/issue-config`
+      : null,
+    0,
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [removing, setRemoving] = useState(false);
@@ -742,18 +916,25 @@ function DraftPanel({
     setError("");
     try {
       await action();
+      return true;
     } catch (failure) {
       setError((failure as Error).message);
+      return false;
     } finally {
       setBusy(false);
     }
   };
+  // Empty steps are left out when saving.
+  const cleanSteps = steps
+    .map((step) => ({ ...step, body: step.body.trim() }))
+    .filter((step) => step.body);
   const dirty =
     !!draft &&
     (title !== draft.title ||
       description !== draft.description ||
       project !== (draft.projectId || "") ||
-      priority !== (draft.priority ? String(draft.priority) : ""));
+      priority !== (draft.priority ? String(draft.priority) : "") ||
+      JSON.stringify(cleanSteps) !== JSON.stringify(draft.steps));
   const save = async () => {
     if (!draft || !dirty) return draft;
     const saved = await api<IssueDraft>(
@@ -764,18 +945,61 @@ function DraftPanel({
         description,
         projectId: project || null,
         priority: priority ? Number(priority) : null,
+        steps: cleanSteps,
       },
       draft.version,
     );
     refresh();
     return saved;
   };
+  /** Ticking a step while reading saves it at once. */
+  const check = (index: number) =>
+    draft &&
+    void run(async () => {
+      await api(
+        `/me/drafts/${draftId}`,
+        "PATCH",
+        {
+          steps: draft.steps.map((step, position) =>
+            position === index ? { ...step, done: !step.done } : step,
+          ),
+        },
+        draft.version,
+      );
+      refresh();
+    });
+  const move = (state: Movable) =>
+    run(async () => {
+      // The server keeps the position within the column; this puts it last.
+      await api(`/me/drafts/${draftId}/move`, "POST", {
+        state,
+        position: 100000,
+      });
+      refresh();
+    });
   const created = draft?.state === "created";
   const target = projects.find((item) => item.id === project);
   const writable = !!target && target.role !== "viewer";
+  const done = draft?.steps.filter((step) => step.done).length ?? 0;
+  const createIssue = () =>
+    void run(async () => {
+      const current = (await save()) || draft!;
+      const [config, members] = await Promise.all([
+        api<IssueConfig>(`/projects/${project}/issue-config`),
+        api<Member[]>(`/projects/${project}/members`),
+      ]);
+      setIssueForm({
+        config,
+        members,
+        draft: {
+          ...current,
+          description: withSteps(current.description, current.steps),
+        },
+      });
+    });
   return (
     <Modal
-      title={draft?.title || "Rascunho"}
+      title={draft?.title || "Tarefa"}
       onClose={() => {
         if (!busy) onClose();
       }}
@@ -787,79 +1011,222 @@ function DraftPanel({
       actions={
         draft &&
         !created && (
-          <OverflowActions
-            label={`Ações de ${draft.title}`}
-            actions={
-              draft.state === "discarded"
-                ? [
-                    {
-                      label: "Repor em Por rever",
-                      icon: <ArrowUturnLeftIcon />,
-                      onClick: () =>
-                        void run(async () => {
-                          await api(`/me/drafts/${draftId}/move`, "POST", {
-                            state: "review",
-                            position: 0,
-                          });
-                          refresh();
-                        }),
-                    },
-                    {
-                      label: "Eliminar rascunho",
-                      icon: <TrashIcon />,
-                      onClick: () => setRemoving(true),
-                    },
-                  ]
-                : [
-                    {
-                      label: "Descartar",
-                      icon: <ArchiveBoxXMarkIcon />,
-                      onClick: () =>
-                        void run(async () => {
-                          await api(`/me/drafts/${draftId}/move`, "POST", {
-                            state: "discarded",
-                            position: 0,
-                          });
-                          refresh();
-                        }),
-                    },
-                  ]
-            }
-          />
+          <>
+            {!editing && (
+              <IconButton
+                icon={<PencilSquareIcon />}
+                label="Editar tarefa"
+                onClick={() => setEditing(true)}
+              />
+            )}
+            <OverflowActions
+              label={`Ações de ${draft.title}`}
+              actions={[
+                {
+                  label: "Criar issue",
+                  icon: <RocketLaunchIcon />,
+                  disabled: !writable,
+                  onClick: createIssue,
+                },
+                ...(draft.state === "discarded"
+                  ? [
+                      {
+                        label: "Repor em Por fazer",
+                        icon: <ArrowUturnLeftIcon />,
+                        onClick: () => void move("todo"),
+                      },
+                      {
+                        label: "Eliminar tarefa",
+                        icon: <TrashIcon />,
+                        onClick: () => setRemoving(true),
+                      },
+                    ]
+                  : [
+                      {
+                        label: "Descartar",
+                        icon: <ArchiveBoxXMarkIcon />,
+                        onClick: () => void move("discarded"),
+                      },
+                    ]),
+              ]}
+            />
+          </>
+        )
+      }
+      footer={
+        draft &&
+        !created &&
+        !editing && (
+          <div className="drawer-footer">
+            <div
+              className="result-bar"
+              role="group"
+              aria-labelledby="task-state-label"
+            >
+              <span className="result-label" id="task-state-label">
+                Estado
+              </span>
+              {taskStates.map(({ state, label }) => (
+                <Button
+                  key={state}
+                  className={`result-button task-state-${state}`}
+                  aria-pressed={draft.state === state}
+                  icon={<CheckIcon />}
+                  disabled={busy}
+                  onClick={() => {
+                    if (draft.state !== state) void move(state);
+                  }}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
+            <Button
+              className="next-test"
+              icon={<RocketLaunchIcon />}
+              disabledFocusable={busy || !writable}
+              title={
+                writable
+                  ? undefined
+                  : "Escolha um projeto onde possa criar issues."
+              }
+              onClick={createIssue}
+            >
+              Criar issue
+            </Button>
+          </div>
         )
       }
     >
       {remote.error && !draft && <ErrorMessage message={remote.error} />}
       {!draft ? (
         !remote.error && <Loading />
-      ) : created ? (
+      ) : !editing ? (
         <>
-          <p className="notice">
-            {draft.issueNumber && draft.issueId && draft.projectId ? (
-              <>
-                Deu origem a{" "}
-                <a
-                  href={routeHash(draft.projectId, "", "dev", {
-                    issue: draft.issueId,
-                  })}
-                >
-                  {issueKey(draft.issueNumber)}
-                </a>{" "}
-                em {draft.projectName}.
-              </>
-            ) : (
-              "Deu origem a um issue que já não está disponível."
+          {created && (
+            <p className="notice">
+              {draft.issueNumber && draft.issueId && draft.projectId ? (
+                <>
+                  Deu origem a{" "}
+                  <a
+                    href={routeHash(draft.projectId, "", "dev", {
+                      issue: draft.issueId,
+                    })}
+                  >
+                    {issueKey(draft.issueNumber)}
+                  </a>{" "}
+                  em {draft.projectName}.
+                </>
+              ) : (
+                "Deu origem a um issue que já não está disponível."
+              )}
+            </p>
+          )}
+          <dl className="meta-list test-meta-list">
+            <div>
+              <dt>Estado</dt>
+              <dd>
+                <StateTag state={draft.state} />
+              </dd>
+            </div>
+            <div>
+              <dt>Prioridade</dt>
+              <dd>
+                <Priority value={draft.priority} />
+              </dd>
+            </div>
+            <div>
+              <dt>Projeto</dt>
+              <dd className={draft.projectName ? "accent" : "muted"}>
+                {projectText(draft)}
+              </dd>
+            </div>
+            {draft.steps.length > 0 && (
+              <div>
+                <dt>Passos</dt>
+                <dd className="mono">
+                  {done}/{draft.steps.length} feitos
+                </dd>
+              </div>
             )}
-          </p>
-          <h3 className="section-label">Descrição do rascunho</h3>
-          <Markdown>{draft.description}</Markdown>
-          <AttachmentList files={draft.attachments} personal />
+            {draft.noteId && (
+              <div>
+                <dt>Nota de origem</dt>
+                <dd>
+                  <a href={personalHash("notes", projectId, draft.noteId)}>
+                    {draft.noteTitle}
+                  </a>
+                </dd>
+              </div>
+            )}
+          </dl>
+          {error && <ErrorMessage message={error} />}
+          <section className="drawer-section">
+            <h3 className="section-label">Descrição</h3>
+            {draft.description.trim() ? (
+              <Markdown>{draft.description}</Markdown>
+            ) : (
+              <p className="muted">Sem descrição.</p>
+            )}
+          </section>
+          {draft.steps.length > 0 && (
+            <section className="drawer-section">
+              <h3 className="section-label">Passos</h3>
+              <ol className="steps">
+                {draft.steps.map((step, index) => (
+                  <li
+                    key={index}
+                    className={`step ${step.done ? "step-done" : ""}`}
+                  >
+                    <span className="step-number mono" aria-hidden>
+                      {index + 1}
+                    </span>
+                    <div className="step-text">
+                      <Markdown>{step.body}</Markdown>
+                    </div>
+                    <div className="step-actions">
+                      <IconButton
+                        size="sm"
+                        variant="secondary"
+                        className="step-mark-pass"
+                        icon={<CheckIcon />}
+                        label={`Passo ${index + 1}: feito`}
+                        aria-pressed={step.done}
+                        disabled={busy || created}
+                        onClick={() => check(index)}
+                      />
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </section>
+          )}
+          {draft.attachments.length > 0 && (
+            <section className="drawer-section">
+              <h3 className="section-label">Anexos</h3>
+              <AttachmentList files={draft.attachments} personal />
+            </section>
+          )}
+          {created && draft.issueId && draft.projectId && (
+            <div className="form-actions">
+              <Button
+                icon={<ArrowTopRightOnSquareIcon />}
+                onClick={() => {
+                  location.hash = routeHash(draft.projectId!, "", "dev", {
+                    issue: draft.issueId,
+                  }).slice(1);
+                }}
+              >
+                Abrir o issue
+              </Button>
+            </div>
+          )}
         </>
       ) : (
         <form
           onSubmit={(event) => {
             event.preventDefault();
-            void run(save);
+            void run(save).then((ok) => ok && setEditing(false));
           }}
         >
           <label className="field">
@@ -871,6 +1238,11 @@ function DraftPanel({
               onChange={(event) => setTitle(event.target.value)}
             />
           </label>
+          <TemplatePicker
+            templates={templates.data?.templates || []}
+            description={description}
+            onLoad={setDescription}
+          />
           <MarkdownField
             label="Descrição"
             value={description}
@@ -894,6 +1266,7 @@ function DraftPanel({
               })
             }
           />
+          <TaskSteps steps={steps} onChange={setSteps} />
           <div className="form-grid">
             <div className="field">
               <Select2
@@ -914,50 +1287,20 @@ function DraftPanel({
               />
             </div>
           </div>
-          {draft.noteId && (
-            <p className="muted">
-              Da nota{" "}
-              <a href={personalHash("notes", projectId, draft.noteId)}>
-                {draft.noteTitle}
-              </a>
-              .
-            </p>
-          )}
           {error && <ErrorMessage message={error} />}
           <div className="form-actions">
-            <Button type="submit" disabledFocusable={busy || !dirty}>
-              {busy ? "A guardar…" : "Guardar"}
-            </Button>
             <Button
-              variant="primary"
-              icon={<RocketLaunchIcon />}
-              disabledFocusable={busy || !writable}
-              title={
-                writable
-                  ? undefined
-                  : "Escolha um projeto onde possa criar issues."
-              }
-              onClick={() =>
-                void run(async () => {
-                  const current = (await save()) || draft;
-                  const [config, members] = await Promise.all([
-                    api<IssueConfig>(`/projects/${project}/issue-config`),
-                    api<Member[]>(`/projects/${project}/members`),
-                  ]);
-                  setIssueForm({
-                    config,
-                    members,
-                    draft: {
-                      ...current,
-                      title,
-                      description,
-                      priority: priority ? Number(priority) : null,
-                    },
-                  });
-                })
-              }
+              disabled={busy}
+              onClick={() => {
+                reset(draft);
+                setError("");
+                setEditing(false);
+              }}
             >
-              Criar issue
+              Cancelar
+            </Button>
+            <Button variant="primary" type="submit" disabledFocusable={busy}>
+              {busy ? "A guardar…" : "Guardar"}
             </Button>
           </div>
         </form>
@@ -974,8 +1317,8 @@ function DraftPanel({
       )}
       {removing && (
         <Confirm
-          title="Eliminar rascunho"
-          description="O rascunho e os seus anexos deixam de existir."
+          title="Eliminar tarefa"
+          description="A tarefa, os seus passos e anexos deixam de existir."
           confirmLabel="Eliminar"
           danger
           onClose={() => setRemoving(false)}
@@ -986,20 +1329,112 @@ function DraftPanel({
           }}
         />
       )}
-      {draft && created && draft.issueId && draft.projectId && (
-        <div className="form-actions">
-          <Button
-            icon={<ArrowTopRightOnSquareIcon />}
-            onClick={() => {
-              location.hash = routeHash(draft.projectId!, "", "dev", {
-                issue: draft.issueId,
-              }).slice(1);
-            }}
-          >
-            Abrir o issue
-          </Button>
-        </div>
-      )}
     </Modal>
+  );
+}
+
+/** Steps of a task while editing: text, order and done, like the steps of a test. */
+function TaskSteps({
+  steps,
+  onChange,
+}: {
+  steps: DraftStep[];
+  onChange(steps: DraftStep[]): void;
+}) {
+  const done = steps.filter((step) => step.done).length;
+  const update = (index: number, body: string) =>
+    onChange(
+      steps.map((step, position) =>
+        position === index ? { ...step, body } : step,
+      ),
+    );
+  const move = (index: number, offset: number) => {
+    const next = [...steps];
+    [next[index], next[index + offset]] = [next[index + offset], next[index]];
+    onChange(next);
+  };
+  return (
+    <fieldset className="field steps-editor task-steps">
+      <legend>
+        Passos
+        {steps.length > 0 && (
+          <span className="muted mono">
+            {" "}
+            · {done}/{steps.length}
+          </span>
+        )}
+      </legend>
+      {steps.length > 0 && (
+        <ol>
+          {steps.map((step, index) => (
+            <li key={index} className={step.done ? "done" : ""}>
+              <input
+                type="checkbox"
+                aria-label={`Passo ${index + 1} feito`}
+                checked={step.done}
+                onChange={() =>
+                  onChange(
+                    steps.map((item, position) =>
+                      position === index ? { ...item, done: !item.done } : item,
+                    ),
+                  )
+                }
+              />
+              <textarea
+                rows={1}
+                aria-label={`Passo ${index + 1}`}
+                value={step.body}
+                maxLength={2000}
+                autoFocus={!step.body && index === steps.length - 1}
+                onChange={(event) => update(index, event.target.value)}
+                onKeyDown={(event) => {
+                  // Enter adds the next step; Shift+Enter breaks the line.
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    if (step.body.trim() && steps.length < 100)
+                      onChange([
+                        ...steps.slice(0, index + 1),
+                        { body: "", done: false },
+                        ...steps.slice(index + 1),
+                      ]);
+                  }
+                }}
+              />
+              <IconButton
+                size="sm"
+                icon={<ArrowUpIcon />}
+                label={`Mover passo ${index + 1} para cima`}
+                disabled={index === 0}
+                onClick={() => move(index, -1)}
+              />
+              <IconButton
+                size="sm"
+                icon={<ArrowDownIcon />}
+                label={`Mover passo ${index + 1} para baixo`}
+                disabled={index === steps.length - 1}
+                onClick={() => move(index, 1)}
+              />
+              <IconButton
+                size="sm"
+                icon={<TrashIcon />}
+                label={`Remover passo ${index + 1}`}
+                onClick={() =>
+                  onChange(steps.filter((_, position) => position !== index))
+                }
+              />
+            </li>
+          ))}
+        </ol>
+      )}
+      <Button
+        size="sm"
+        variant="dashed"
+        icon={<PlusIcon />}
+        disabled={steps.length >= 100}
+        onClick={() => onChange([...steps, { body: "", done: false }])}
+      >
+        Adicionar passo
+      </Button>
+    </fieldset>
   );
 }

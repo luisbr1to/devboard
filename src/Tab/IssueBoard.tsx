@@ -18,6 +18,7 @@ import {
   DiscussionCount,
   IconButton,
   OverflowActions,
+  scrollBoardNearEdge,
   type OverflowAction,
 } from "./components";
 import { issueKey } from "./presentation";
@@ -94,7 +95,12 @@ export function IssueBoard({
     return { statusId, index: index < 0 ? cards.length : index };
   };
   return (
-    <div className="board" role="list" aria-label="Board de issues">
+    <div
+      className="board"
+      role="list"
+      aria-label="Board de issues"
+      onDragOver={scrollBoardNearEdge}
+    >
       {statuses.map((status, statusIndex) => {
         const cards = column(status.id);
         const columnDrop =

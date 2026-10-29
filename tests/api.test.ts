@@ -3876,9 +3876,9 @@ test("drafts: personal board, items from notes and conversion into issues", asyn
   assert.deepEqual(
     drafts.map((draft: any) => [draft.title, draft.state, draft.position]),
     [
-      ["A", "review", 0],
-      ["B", "review", 1],
-      ["C", "review", 2],
+      ["A", "todo", 0],
+      ["B", "todo", 1],
+      ["C", "todo", 2],
     ],
   );
   assert.equal(drafts[0].projectName, "Checkout");
@@ -3906,12 +3906,12 @@ test("drafts: personal board, items from notes and conversion into issues", asyn
   await call("get", `/me/drafts/${a.id}`, "member").expect(404);
   // Board moves keep each column contiguous; "Criado" is never a target.
   await call("post", `/me/drafts/${c.id}/move`, "owner", {
-    state: "ready",
+    state: "doing",
     position: 0,
   }).expect(200);
   const moved = (
     await call("post", `/me/drafts/${a.id}/move`, "owner", {
-      state: "ready",
+      state: "doing",
       position: 5,
     }).expect(200)
   ).body;
@@ -3927,9 +3927,9 @@ test("drafts: personal board, items from notes and conversion into issues", asyn
       draft.position,
     ]);
   assert.deepEqual(await columns(), [
-    ["C", "ready", 0],
-    ["A", "ready", 1],
-    ["B", "review", 0],
+    ["C", "doing", 0],
+    ["A", "doing", 1],
+    ["B", "todo", 0],
   ]);
   await personalUpload(
     `/me/drafts/${a.id}/attachments`,
@@ -3961,8 +3961,8 @@ test("drafts: personal board, items from notes and conversion into issues", asyn
   assert.equal(created.issueNumber, issue.number);
   assert.deepEqual(await columns(), [
     ["A", "created", 0],
-    ["C", "ready", 0],
-    ["B", "review", 0],
+    ["C", "doing", 0],
+    ["B", "todo", 0],
   ]);
   const activity = (await call("get", `/issues/${issue.id}/activity`)).body;
   assert.equal(activity[0].kind, "issue_created");
@@ -3980,7 +3980,7 @@ test("drafts: personal board, items from notes and conversion into issues", asyn
     created.version,
   ).expect(409);
   await call("post", `/me/drafts/${a.id}/move`, "owner", {
-    state: "review",
+    state: "todo",
     position: 0,
   }).expect(409);
   // Only discarded drafts can be removed; removing the note keeps its drafts.
@@ -4037,4 +4037,140 @@ test("drafts: an issue removed for good leaves its draft as created, without the
   assert.equal(left.state, "created");
   assert.equal(left.issueId, null);
   assert.equal(left.issueNumber, null);
+});
+test("tasks: steps are checked off and a task can be done without an issue", async () => {
+  const [task] = (
+    await call("post", "/me/drafts", "owner", {
+      items: [{ title: "Preparar a demo" }],
+    }).expect(201)
+  ).body;
+  assert.equal(task.state, "todo");
+  assert.deepEqual(task.steps, []);
+  const planned = (
+    await call(
+      "patch",
+      `/me/drafts/${task.id}`,
+      "owner",
+      { steps: [{ body: "Rever slides" }, { body: "Testar o projetor" }] },
+      task.version,
+    ).expect(200)
+  ).body;
+  assert.deepEqual(planned.steps, [
+    { body: "Rever slides", done: false },
+    { body: "Testar o projetor", done: false },
+  ]);
+  await call(
+    "patch",
+    `/me/drafts/${task.id}`,
+    "owner",
+    { steps: [{ body: "  " }] },
+    planned.version,
+  ).expect(400);
+  const checked = (
+    await call(
+      "patch",
+      `/me/drafts/${task.id}`,
+      "owner",
+      {
+        steps: [
+          { body: "Rever slides", done: true },
+          { body: "Testar o projetor", done: false },
+        ],
+      },
+      planned.version,
+    ).expect(200)
+  ).body;
+  assert.equal(checked.steps[0].done, true);
+  assert.equal(checked.title, "Preparar a demo");
+  // A stale version (another tab ticking a step) is refused.
+  await call(
+    "patch",
+    `/me/drafts/${task.id}`,
+    "owner",
+    { steps: [] },
+    planned.version,
+  ).expect(409);
+  for (const state of ["doing", "done"]) {
+    const moved = (
+      await call("post", `/me/drafts/${task.id}/move`, "owner", {
+        state,
+        position: 0,
+      }).expect(200)
+    ).body;
+    assert.equal(moved.state, state);
+  }
+  // Steps of someone else's task cannot be read or changed.
+  await call("get", `/me/drafts/${task.id}`, "member").expect(404);
+  const [planned2] = (
+    await call("post", "/me/drafts", "owner", {
+      items: [{ title: "Com passos", steps: [{ body: "Primeiro" }] }],
+    }).expect(201)
+  ).body;
+  assert.deepEqual(planned2.steps, [{ body: "Primeiro", done: false }]);
+});
+test("issue templates: owners manage the project's own, everyone sees them in the config", async () => {
+  const { project } = await issueFixture();
+  assert.deepEqual(
+    (await call("get", `/projects/${project.id}/issue-config`)).body.templates,
+    [],
+  );
+  await call("post", `/projects/${project.id}/issue-templates`, "member", {
+    name: "Hotfix",
+    body: "## Causa",
+  }).expect(403);
+  const template = (
+    await call("post", `/projects/${project.id}/issue-templates`, "owner", {
+      name: "Hotfix",
+      body: "## Causa\n\n## Correção",
+    }).expect(201)
+  ).body;
+  assert.equal(template.name, "Hotfix");
+  await call("post", `/projects/${project.id}/issue-templates`, "owner", {
+    name: "hotfix",
+  }).expect(409);
+  const seen = (
+    await call("get", `/projects/${project.id}/issue-config`, "member")
+  ).body.templates;
+  assert.deepEqual(
+    seen.map((item: any) => [item.name, item.body]),
+    [["Hotfix", "## Causa\n\n## Correção"]],
+  );
+  await call(
+    "patch",
+    `/issue-templates/${template.id}`,
+    "member",
+    { name: "Mudado" },
+    template.version,
+  ).expect(403);
+  await call("patch", `/issue-templates/${template.id}`, "owner", {
+    name: "Sem versão",
+  }).expect(428);
+  const edited = (
+    await call(
+      "patch",
+      `/issue-templates/${template.id}`,
+      "owner",
+      { name: "Hotfix urgente", body: "## Causa" },
+      template.version,
+    ).expect(200)
+  ).body;
+  assert.equal(edited.name, "Hotfix urgente");
+  await call(
+    "delete",
+    `/issue-templates/${template.id}`,
+    "owner",
+    undefined,
+    template.version,
+  ).expect(409);
+  await call(
+    "delete",
+    `/issue-templates/${template.id}`,
+    "owner",
+    undefined,
+    edited.version,
+  ).expect(204);
+  assert.deepEqual(
+    (await call("get", `/projects/${project.id}/issue-config`)).body.templates,
+    [],
+  );
 });

@@ -459,7 +459,7 @@ export function Notes({
         ) : (
           <Empty title="Escolha ou crie uma nota">
             As notas são só suas. Use listas ou checklists para transformar os
-            itens de uma daily ou reunião em rascunhos de issues.
+            itens de uma daily ou reunião em tarefas.
           </Empty>
         )}
       </section>
@@ -810,7 +810,7 @@ function NoteEditor({
         {removing && (
           <Confirm
             title="Eliminar nota definitivamente"
-            description="A nota e os seus anexos deixam de existir. Os rascunhos criados a partir dela mantêm-se."
+            description="A nota e os seus anexos deixam de existir. As tarefas criadas a partir dela mantêm-se."
             confirmLabel="Eliminar"
             danger
             onClose={() => setRemoving(false)}
@@ -868,7 +868,7 @@ function NoteEditor({
           label="Ações da nota"
           actions={[
             {
-              label: "Criar rascunhos de issues",
+              label: "Criar tarefas",
               icon: <RectangleStackIcon />,
               onClick: () => setDrafting(true),
             },
@@ -997,7 +997,7 @@ function NoteEditor({
       )}
       {!!drafts.data?.length && (
         <section className="note-drafts">
-          <h3 className="section-label">Rascunhos desta nota</h3>
+          <h3 className="section-label">Tarefas desta nota</h3>
           <ul>
             {drafts.data.map((draft) => (
               <li key={draft.id}>
@@ -1071,7 +1071,7 @@ function DraftItemsDialog({
   const [created, setCreated] = useState(0);
   return (
     <Modal
-      title="Criar rascunhos de issues"
+      title="Criar tarefas"
       onClose={() => {
         if (!busy) onClose();
       }}
@@ -1080,8 +1080,8 @@ function DraftItemsDialog({
         <>
           <p className="notice">
             {created === 1
-              ? "Foi criado 1 rascunho em «Por rever»."
-              : `Foram criados ${created} rascunhos em «Por rever».`}
+              ? "Foi criada 1 tarefa em «Por fazer»."
+              : `Foram criadas ${created} tarefas em «Por fazer».`}
           </p>
           <div className="form-actions">
             <Button onClick={onClose}>Fechar</Button>
@@ -1091,7 +1091,7 @@ function DraftItemsDialog({
                 location.hash = personalHash("drafts", projectId).slice(1);
               }}
             >
-              Abrir a board de rascunhos
+              Abrir a board de tarefas
             </Button>
           </div>
         </>
@@ -1099,7 +1099,7 @@ function DraftItemsDialog({
         <>
           <Empty title="Sem itens na nota">
             Escreva as ações como lista ou checklist: cada item de primeiro
-            nível pode tornar-se um rascunho, com os subitens como descrição.
+            nível pode tornar-se uma tarefa, com os subitens como descrição.
           </Empty>
           <div className="form-actions">
             <Button onClick={onClose}>Fechar</Button>
@@ -1156,7 +1156,7 @@ function DraftItemsDialog({
                     {(already || item.done || item.description) && (
                       <small>
                         {[
-                          already && "Já em rascunho",
+                          already && "Já é tarefa",
                           item.done && "Concluído na nota",
                           item.description &&
                             `${item.description.split("\n").length} linha(s) de detalhe`,
@@ -1203,8 +1203,8 @@ function DraftItemsDialog({
               {busy
                 ? "A criar…"
                 : chosen.size === 1
-                  ? "Criar 1 rascunho"
-                  : `Criar ${chosen.size} rascunhos`}
+                  ? "Criar 1 tarefa"
+                  : `Criar ${chosen.size} tarefas`}
             </Button>
           </div>
         </form>

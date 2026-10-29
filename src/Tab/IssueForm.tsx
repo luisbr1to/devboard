@@ -14,8 +14,9 @@ import {
   tagOptions,
 } from "./issueUi";
 import { Select2 } from "./Select2";
+import { TemplatePicker } from "./templates";
 
-/** Create an issue (all fields), possibly from a personal draft, or edit its title and description. */
+/** Create an issue (all fields), possibly from a personal task, or edit its title and description. */
 export function IssueForm({
   projectId,
   issue,
@@ -33,7 +34,7 @@ export function IssueForm({
   members: Member[];
   initialStatusId?: string;
   userId?: string;
-  /** Prefills the form; the draft is marked as created with the issue. */
+  /** Prefills the form; the task is marked as created with the issue. */
   draft?: IssueDraft;
   onSaved(issue: Issue): void;
   onClose(): void;
@@ -107,6 +108,13 @@ export function IssueForm({
             onChange={(event) => setTitle(event.target.value)}
           />
         </label>
+        {!issue && (
+          <TemplatePicker
+            templates={config.templates}
+            description={description}
+            onLoad={setDescription}
+          />
+        )}
         <MarkdownField
           label="Descrição"
           value={description}
@@ -192,8 +200,8 @@ export function IssueForm({
         {!!draft?.attachments.length && (
           <p className="muted">
             {draft.attachments.length === 1
-              ? "O anexo do rascunho será adicionado ao issue."
-              : `Os ${draft.attachments.length} anexos do rascunho serão adicionados ao issue.`}
+              ? "O anexo da tarefa será adicionado ao issue."
+              : `Os ${draft.attachments.length} anexos da tarefa serão adicionados ao issue.`}
           </p>
         )}
         {error && <ErrorMessage message={error} />}

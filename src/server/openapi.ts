@@ -22,6 +22,7 @@ import {
   suiteSelectionInput,
   issueStatusInput,
   issueTagInput,
+  issueTemplateInput,
   issueImportInput,
   issueFromDraftInput,
   noteInput,
@@ -360,7 +361,27 @@ operation(
 operation(
   "/projects/{projectId}/issue-config",
   "get",
-  "Estados, módulos e labels do Desenvolvimento",
+  "Estados, módulos, labels e templates do Desenvolvimento",
+);
+operation(
+  "/projects/{projectId}/issue-templates",
+  "post",
+  "Criar template de descrição de issues (proprietário)",
+  issueTemplateInput,
+);
+operation(
+  "/issue-templates/{templateId}",
+  "patch",
+  "Editar template de descrição (proprietário)",
+  issueTemplateInput,
+  true,
+);
+operation(
+  "/issue-templates/{templateId}",
+  "delete",
+  "Apagar template de descrição (proprietário)",
+  undefined,
+  true,
 );
 for (const [kind, label, input] of [
   ["statuses", "estado", issueStatusInput],
@@ -423,7 +444,7 @@ operation(
 operation(
   "/projects/{projectId}/issues",
   "post",
-  "Criar issue; o reporter é sempre quem cria. Com draftId, o rascunho de quem cria passa a Criado e os seus anexos vão para o issue",
+  "Criar issue; o reporter é sempre quem cria. Com draftId, a tarefa de quem cria passa a Issue criado e os seus anexos vão para o issue",
   issueFromDraftInput,
 );
 operation("/issues/{issueId}", "get", "Obter issue");
@@ -547,29 +568,29 @@ operation("/me/notes/{noteId}/restore", "post", "Restaurar nota da reciclagem");
 operation(
   "/me/drafts",
   "get",
-  "Os meus rascunhos de issues, com ?noteId= ou ?projectId=",
+  "As minhas tarefas (rascunhos de issues), com ?noteId= ou ?projectId=",
 );
 operation(
   "/me/drafts",
   "post",
-  "Criar rascunhos em Por rever (até 50, por exemplo itens de uma nota)",
+  "Criar tarefas em Por fazer (até 50, por exemplo itens de uma nota)",
   draftBatchInput,
 );
-operation("/me/drafts/{draftId}", "get", "Obter rascunho");
+operation("/me/drafts/{draftId}", "get", "Obter tarefa");
 operation(
   "/me/drafts/{draftId}",
   "patch",
-  "Editar rascunho (não depois de Criado)",
+  "Editar tarefa, incluindo os passos com visto (não depois de Issue criado)",
   draftPatchInput,
   true,
 );
 operation(
   "/me/drafts/{draftId}/move",
   "post",
-  "Mover rascunho na board: Por rever, Pronto a criar ou Descartado",
+  "Mover tarefa na board: Por fazer, Em curso, Concluído ou Descartado",
   draftMoveInput,
 );
-operation("/me/drafts/{draftId}", "delete", "Eliminar rascunho descartado");
+operation("/me/drafts/{draftId}", "delete", "Eliminar tarefa descartada");
 export const openapi = {
   openapi: "3.0.3",
   info: {

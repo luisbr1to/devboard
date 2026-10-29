@@ -215,6 +215,9 @@ export const issueStatusInput = z
     position: z.number().int().min(0).max(1000).optional(),
   })
   .strict();
+export const issueTemplateInput = z
+  .object({ name: configName, body: markdown })
+  .strict();
 export const issueTagInput = z
   .object({
     name: configName,
@@ -408,20 +411,40 @@ export const noteFolderPatchInput = z
     parentId: z.string().uuid().nullable().optional(),
   })
   .strict();
-export const draftStates = ["review", "ready", "created", "discarded"] as const;
+/** Personal tasks; any of them can become an issue, which moves it to «Issue criado». */
+export const draftStates = [
+  "todo",
+  "doing",
+  "done",
+  "created",
+  "discarded",
+] as const;
 export type DraftState = (typeof draftStates)[number];
 export const draftStateLabels: Record<DraftState, string> = {
-  review: "Por rever",
-  ready: "Pronto a criar",
-  created: "Criado",
+  todo: "Por fazer",
+  doing: "Em curso",
+  done: "Concluído",
+  created: "Issue criado",
   discarded: "Descartado",
 };
+const draftSteps = z
+  .array(
+    z
+      .object({
+        body: z.string().trim().min(1).max(2000),
+        done: z.boolean().default(false),
+      })
+      .strict(),
+  )
+  .max(100);
+export type DraftStep = z.infer<typeof draftSteps>[number];
 const draftItem = z
   .object({
     title,
     description: markdown,
     /** The note item it came from, to warn before drafting it twice. */
     sourceText: z.string().max(2000).nullable().default(null),
+    steps: draftSteps.default([]),
   })
   .strict();
 export const draftBatchInput = z
@@ -438,12 +461,13 @@ export const draftPatchInput = z
     description: z.string().max(50000).optional(),
     projectId: z.string().uuid().nullable().optional(),
     priority: priority.optional(),
+    steps: draftSteps.optional(),
   })
   .strict();
-/** "Criado" is reached only by creating the issue, and never left. */
+/** «Issue criado» is reached only by creating the issue, and never left. */
 export const draftMoveInput = z
   .object({
-    state: z.enum(["review", "ready", "discarded"]),
+    state: z.enum(["todo", "doing", "done", "discarded"]),
     position: z.number().int().min(0).max(100000),
   })
   .strict();
@@ -486,6 +510,7 @@ export interface IssueDraft {
   title: string;
   description: string;
   priority: number | null;
+  steps: DraftStep[];
   state: DraftState;
   position: number;
   issueId: string | null;
@@ -732,7 +757,88 @@ export interface IssueConfig {
   statuses: IssueStatus[];
   modules: IssueTag[];
   labels: IssueTag[];
+  /** The project's own templates; the built-in ones are in `builtInTemplates`. */
+  templates: IssueTemplate[];
 }
+export interface IssueTemplate {
+  id: string;
+  name: string;
+  body: string;
+  /** Built-in templates exist in every project and cannot be changed. */
+  builtIn?: boolean;
+  version: number;
+}
+/** Offered in every project and on tasks without one; a description starts empty until one is loaded. */
+export const builtInTemplates: IssueTemplate[] = [
+  {
+    id: "feature",
+    name: "Nova funcionalidade",
+    builtIn: true,
+    version: 1,
+    body: [
+      "## Contexto",
+      "",
+      "Porque é que isto é preciso e para quem.",
+      "",
+      "## Objetivo",
+      "",
+      "O que a pessoa deve passar a conseguir fazer.",
+      "",
+      "## Critérios de aceitação",
+      "",
+      "- [ ] Dado … quando … então …",
+      "- [ ] …",
+      "",
+      "## Fora de âmbito",
+      "",
+      "- …",
+      "",
+      "## Notas técnicas e design",
+      "",
+      "Links (Figma, documentação), dependências, riscos, dados ou permissões afetados.",
+    ].join("\n"),
+  },
+  {
+    id: "bug",
+    name: "Reportar bug",
+    builtIn: true,
+    version: 1,
+    body: [
+      "## Resumo",
+      "",
+      "O que está errado, numa frase.",
+      "",
+      "## Passos para reproduzir",
+      "",
+      "1. Abrir …",
+      "2. …",
+      "3. …",
+      "",
+      "## Resultado esperado",
+      "",
+      "O que devia acontecer.",
+      "",
+      "## Resultado obtido",
+      "",
+      "O que acontece, com a mensagem de erro se houver.",
+      "## Ambiente",
+      "",
+      "- Ambiente: produção / staging / local",
+      "- Browser ou dispositivo: …",
+      "- Versão ou commit: …",
+      "- Utilizador ou dados de teste: …",
+      "",
+      "## Frequência e impacto",
+      "",
+      "- Acontece: sempre / às vezes / uma vez",
+      "- Quem é afetado e quão grave é: …",
+      "",
+      "## Evidências",
+      "",
+      "Capturas, vídeos, logs ou IDs de pedido.",
+    ].join("\n"),
+  },
+];
 export interface IssuePerson {
   id: string;
   name: string;

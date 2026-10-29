@@ -1,4 +1,4 @@
-// Personal area: Markdown notes in folders with tags, and issue drafts on a personal board.
+// Personal area: Markdown notes in folders with tags, and tasks (issue drafts) on a personal board.
 // Everything belongs to its author alone (administrators and keys included): rows are always
 // filtered by user, a missing or foreign row is a 404, and writes lock the author's user row.
 import express, { type Request, type Router } from "express";
@@ -130,9 +130,9 @@ async function ownDraft(
       [draftId, userId],
     )
   ).rows[0];
-  if (!draft) throw new HttpError(404, "Rascunho não encontrado.");
+  if (!draft) throw new HttpError(404, "Tarefa não encontrada.");
   if (options.write && draft.state === "created")
-    throw new HttpError(409, "Este rascunho já deu origem a um issue.");
+    throw new HttpError(409, "Esta tarefa já deu origem a um issue.");
   return draft;
 }
 async function loadDrafts(
@@ -146,7 +146,7 @@ async function loadDrafts(
   const access = `p.deleted_at IS NULL AND (${admin ? "TRUE" : "FALSE"} OR EXISTS (SELECT 1 FROM project_members m WHERE m.project_id=p.id AND m.user_id=$1 AND ${activeMember}))`;
   const rows = (
     await db.query(
-      `SELECT d.id,d.note_id,n.title AS note_title,d.source_text,d.project_id,CASE WHEN ${access} THEN p.name END AS project_name,d.title,d.description,d.priority,d.state,d.position,d.issue_id,CASE WHEN ${access} AND i.deleted_at IS NULL THEN i.number END AS issue_number,d.created_at,d.updated_at,d.version FROM issue_drafts d LEFT JOIN notes n ON n.id=d.note_id AND n.deleted_at IS NULL LEFT JOIN projects p ON p.id=d.project_id LEFT JOIN issues i ON i.id=d.issue_id WHERE d.user_id=$1 AND ${where} ORDER BY d.state,d.position,d.updated_at DESC`,
+      `SELECT d.id,d.note_id,n.title AS note_title,d.source_text,d.project_id,CASE WHEN ${access} THEN p.name END AS project_name,d.title,d.description,d.priority,d.steps,d.state,d.position,d.issue_id,CASE WHEN ${access} AND i.deleted_at IS NULL THEN i.number END AS issue_number,d.created_at,d.updated_at,d.version FROM issue_drafts d LEFT JOIN notes n ON n.id=d.note_id AND n.deleted_at IS NULL LEFT JOIN projects p ON p.id=d.project_id LEFT JOIN issues i ON i.id=d.issue_id WHERE d.user_id=$1 AND ${where} ORDER BY d.state,d.position,d.updated_at DESC`,
       values,
     )
   ).rows;
@@ -175,7 +175,7 @@ async function loadDraft(
 ) {
   const user = human(actor);
   const [draft] = await loadDrafts(db, actor, "d.id=$2", [user.id, draftId]);
-  if (!draft) throw new HttpError(404, "Rascunho não encontrado.");
+  if (!draft) throw new HttpError(404, "Tarefa não encontrada.");
   return draft;
 }
 async function checkProject(
@@ -516,13 +516,13 @@ export function noteRoutes(router: Router, db: Database) {
       if (input.noteId)
         await ownNote(client, input.noteId, user.id, { write: true });
       await checkProject(client, actor, input.projectId);
-      let position = await columnSize(client, user.id, "review");
+      let position = await columnSize(client, user.id, "todo");
       const ids: string[] = [];
       for (const item of input.items) {
         const draftId = randomUUID();
         ids.push(draftId);
         await client.query(
-          "INSERT INTO issue_drafts(id,user_id,note_id,source_text,project_id,title,description,priority,position) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)",
+          "INSERT INTO issue_drafts(id,user_id,note_id,source_text,project_id,title,description,priority,position,steps) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
           [
             draftId,
             user.id,
@@ -533,6 +533,7 @@ export function noteRoutes(router: Router, db: Database) {
             item.description,
             input.priority,
             position++,
+            JSON.stringify(item.steps),
           ],
         );
       }
@@ -564,13 +565,14 @@ export function noteRoutes(router: Router, db: Database) {
       )
         await checkProject(client, actor, input.projectId);
       await client.query(
-        "UPDATE issue_drafts SET title=$2,description=$3,project_id=$4,priority=$5,updated_at=now(),version=version+1 WHERE id=$1",
+        "UPDATE issue_drafts SET title=$2,description=$3,project_id=$4,priority=$5,steps=$6,updated_at=now(),version=version+1 WHERE id=$1",
         [
           draftId,
           input.title ?? current.title,
           input.description ?? current.description,
           input.projectId === undefined ? current.project_id : input.projectId,
           input.priority === undefined ? current.priority : input.priority,
+          JSON.stringify(input.steps ?? current.steps),
         ],
       );
       return loadDraft(client, actor, draftId);
@@ -614,7 +616,7 @@ export function noteRoutes(router: Router, db: Database) {
       if (draft.state !== "discarded")
         throw new HttpError(
           409,
-          "Só pode eliminar rascunhos que foram descartados.",
+          "Só pode eliminar tarefas que foram descartadas.",
         );
       await leaveColumn(client, draft);
       await client.query("DELETE FROM issue_drafts WHERE id=$1", [draftId]);
@@ -687,7 +689,7 @@ export function noteRoutes(router: Router, db: Database) {
   router.delete("/me/attachments/:attachmentId", async (req, res) => {
     const file = await ownAttachment(req, res);
     if (file.draft_state === "created")
-      throw new HttpError(409, "Este rascunho já deu origem a um issue.");
+      throw new HttpError(409, "Esta tarefa já deu origem a um issue.");
     if (file.note_deleted)
       throw new HttpError(
         409,

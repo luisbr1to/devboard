@@ -560,7 +560,7 @@ function Workspace({
             onClick={() => setNavOpen(false)}
           >
             <RectangleStackIcon aria-hidden />
-            <span>Rascunhos</span>
+            <span>Tarefas</span>
           </a>
         </nav>
         {admin && (
@@ -619,7 +619,7 @@ function Workspace({
               <ol>
                 <li>Pessoal</li>
                 <li aria-current="page">
-                  {notes ? "Notas" : "Rascunhos de issues"}
+                  {notes ? "Notas" : "Tarefas"}
                 </li>
               </ol>
             ) : administration ? (

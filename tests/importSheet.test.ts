@@ -92,6 +92,7 @@ const config: IssueConfig = {
     },
   ],
   labels: [],
+  templates: [],
 };
 
 test("import: columns of a real-world test sheet are recognised", () => {

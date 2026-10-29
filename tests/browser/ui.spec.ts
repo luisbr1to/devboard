@@ -23,7 +23,7 @@ async function mockApi(page: Page) {
       await route.fulfill({ status: 204 });
       return;
     } else if (path.endsWith("/issue-config")) {
-      result = { statuses: [], modules, labels: [] };
+      result = { statuses: [], modules, labels: [], templates: [] };
     } else if (path === "/me/preferences") {
       result = preferences;
     } else if (path.startsWith("/me/preferences/")) {
@@ -1145,7 +1145,7 @@ test("owners restore archived issues in bulk and archive by status rule", async 
     let result: unknown = {};
     if (path === "/me/preferences") result = {};
     else if (path.endsWith("/issue-config"))
-      result = { statuses, modules: [], labels: [] };
+      result = { statuses, modules: [], labels: [], templates: [] };
     else if (path.endsWith("/issues/restore")) {
       const data = req.postDataJSON();
       posted.push({ path, data });
@@ -1530,7 +1530,7 @@ test("board columns can be hidden and reordered per user, by drag or keyboard", 
       result = { key, value };
     } else if (path.startsWith("/me/preferences/")) result = {};
     else if (path.endsWith("/issue-config"))
-      result = { statuses, modules: [], labels: [] };
+      result = { statuses, modules: [], labels: [], templates: [] };
     else if (path.endsWith("/issues"))
       result = {
         items: issues,

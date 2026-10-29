@@ -21,6 +21,7 @@ import {
 import { api, useRemote } from "./api";
 import { Button, ErrorMessage, IconButton, Loading, Modal } from "./components";
 import { StatusTag, Tag, colorOptions } from "./issueUi";
+import { TemplatesCard } from "./templates";
 
 type Kind = "statuses" | "modules" | "labels";
 type Item = IssueStatus | IssueTag;
@@ -48,7 +49,7 @@ const texts: Record<
   },
 };
 
-/** Definições → Desenvolvimento: statuses, modules and labels of the project. */
+/** Definições → Desenvolvimento: statuses, modules, labels and templates of the project. */
 export function IssueSettings({
   project,
   revision,
@@ -75,6 +76,11 @@ export function IssueSettings({
           onChanged={() => setLocal((value) => value + 1)}
         />
       ))}
+      <TemplatesCard
+        project={project}
+        templates={config.data.templates}
+        onChanged={() => setLocal((value) => value + 1)}
+      />
     </div>
   );
 }
