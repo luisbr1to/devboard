@@ -1,11 +1,20 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import {
   ArchiveBoxXMarkIcon,
   ArrowUturnLeftIcon,
+  CheckIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   DocumentPlusIcon,
   DocumentTextIcon,
+  FolderArrowDownIcon,
   FolderIcon,
   FolderPlusIcon,
   PencilIcon,
@@ -60,6 +69,23 @@ function folderPaths(folders: NoteFolder[]) {
     .map((folder) => ({ ...folder, path: path(folder) }))
     .sort((a, b) => a.path.localeCompare(b.path, "pt-PT"));
 }
+const folderOptionsOf = (folders: NoteFolder[]): SelectOption[] => [
+  {
+    value: "",
+    label: "Sem pasta",
+    render: <span className="muted">Sem pasta</span>,
+  },
+  ...folderPaths(folders).map((folder) => ({
+    value: folder.id,
+    label: folder.path,
+  })),
+];
+/** What the sidebar asks of the open note, so its edits go through the editor's saves. */
+interface NoteHandle {
+  edit(): void;
+  move(folderId: string | null): Promise<void>;
+  trash(): Promise<void>;
+}
 export const projectOptions = (projects: Project[]): SelectOption[] => [
   {
     value: "",
@@ -109,7 +135,16 @@ export function Notes({
     parentId?: string | null;
   }>();
   const [removingFolder, setRemovingFolder] = useState<NoteFolder>();
+  const [movingNote, setMovingNote] = useState<NoteSummary>();
   const [error, setError] = useState("");
+  const editor = useRef<NoteHandle>(undefined);
+  const [editNext, setEditNext] = useState<string>();
+  useEffect(() => {
+    if (noteId !== editNext) setEditNext(undefined);
+  }, [noteId]);
+  const [dragged, setDragged] = useState<string>();
+  /** A folder id, null for the top level, undefined when not over one. */
+  const [dropTarget, setDropTarget] = useState<string | null>();
   const open = (id = "") => {
     location.hash = personalHash("notes", projectId, id).slice(1);
   };
@@ -126,13 +161,80 @@ export function Notes({
       setError((failure as Error).message);
     }
   };
+  const act = async (work: () => Promise<void>) => {
+    setError("");
+    try {
+      await work();
+    } catch (failure) {
+      setError((failure as Error).message);
+    }
+  };
+  const editNote = (note: NoteSummary) => {
+    if (note.id === noteId && editor.current) editor.current.edit();
+    else {
+      setEditNext(note.id);
+      open(note.id);
+    }
+  };
+  const trashNote = (note: NoteSummary) =>
+    act(async () => {
+      if (note.id === noteId && editor.current) await editor.current.trash();
+      else {
+        await api(`/me/notes/${note.id}`, "DELETE");
+        changed();
+      }
+    });
+  const moveNote = (note: NoteSummary, folderId: string | null) =>
+    act(async () => {
+      if (note.folderId === folderId) return;
+      if (note.id === noteId && editor.current)
+        await editor.current.move(folderId);
+      else {
+        const { version } = await api<Note>(`/me/notes/${note.id}`);
+        await api(`/me/notes/${note.id}`, "PATCH", { folderId }, version);
+        changed();
+      }
+    });
+  /** Drag and drop of notes into a folder, or to the top level with null. */
+  const dropZone = (folderId: string | null) => ({
+    onDragOver: (event: React.DragEvent) => {
+      if (!dragged) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.dataTransfer.dropEffect = "move";
+      if (dropTarget !== folderId) setDropTarget(folderId);
+    },
+    onDrop: (event: React.DragEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const note = notes.data?.find((item) => item.id === dragged);
+      setDragged(undefined);
+      setDropTarget(undefined);
+      if (note) void moveNote(note, folderId);
+    },
+  });
   const flat = !!search || !!tag || view === "trash";
   const children = (parentId: string | null) =>
     (folders.data || [])
       .filter((folder) => folder.parentId === parentId)
       .sort((a, b) => a.name.localeCompare(b.name, "pt-PT"));
   const noteLink = (note: NoteSummary) => (
-    <li key={note.id}>
+    <li
+      key={note.id}
+      className={["note-row", dragged === note.id && "dragging"]
+        .filter(Boolean)
+        .join(" ")}
+      draggable={!flat}
+      onDragStart={(event) => {
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", note.id);
+        setDragged(note.id);
+      }}
+      onDragEnd={() => {
+        setDragged(undefined);
+        setDropTarget(undefined);
+      }}
+    >
       <a
         className="note-link"
         href={personalHash("notes", projectId, note.id)}
@@ -144,6 +246,28 @@ export function Notes({
           {flat && note.excerpt && <small>{note.excerpt}</small>}
         </span>
       </a>
+      {!note.deletedAt && (
+        <OverflowActions
+          label={`Ações da nota ${note.title}`}
+          actions={[
+            {
+              label: "Editar",
+              icon: <PencilIcon />,
+              onClick: () => editNote(note),
+            },
+            {
+              label: "Mover para pasta…",
+              icon: <FolderArrowDownIcon />,
+              onClick: () => setMovingNote(note),
+            },
+            {
+              label: "Mover para a reciclagem",
+              icon: <ArchiveBoxXMarkIcon />,
+              onClick: () => void trashNote(note),
+            },
+          ]}
+        />
+      )}
     </li>
   );
   const tree = (parentId: string | null, depth = 0): ReactNode => {
@@ -153,12 +277,40 @@ export function Notes({
     const subfolders = children(parentId);
     if (!items.length && !subfolders.length) return null;
     return (
-      <ul className="note-tree" role={depth ? "group" : undefined}>
+      <ul
+        className={[
+          "note-tree",
+          !depth && dragged && dropTarget === null && "drop-target",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        role={depth ? "group" : undefined}
+        {...(depth ? {} : dropZone(null))}
+        onDragLeave={
+          depth
+            ? undefined
+            : (event) => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node))
+                  setDropTarget(undefined);
+              }
+        }
+      >
         {subfolders.map((folder) => {
           const closed = collapsed.has(folder.id);
           return (
-            <li key={folder.id} className="note-folder">
-              <div className="note-folder-row">
+            <li
+              key={folder.id}
+              className="note-folder"
+              {...dropZone(folder.id)}
+            >
+              <div
+                className={[
+                  "note-folder-row",
+                  dropTarget === folder.id && "drop-target",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+              >
                 <button
                   type="button"
                   className="note-folder-toggle"
@@ -299,6 +451,8 @@ export function Notes({
             projectId={projectId}
             projects={projects}
             folders={folders.data || []}
+            editOnOpen={editNext === noteId}
+            handle={editor}
             onChanged={changed}
             onClosed={() => open()}
           />
@@ -317,6 +471,14 @@ export function Notes({
           onSaved={changed}
         />
       )}
+      {movingNote && (
+        <MoveNoteForm
+          note={movingNote}
+          folders={folders.data || []}
+          onClose={() => setMovingNote(undefined)}
+          onMove={(folderId) => moveNote(movingNote, folderId)}
+        />
+      )}
       {removingFolder && (
         <Confirm
           title="Apagar pasta"
@@ -331,6 +493,57 @@ export function Notes({
         />
       )}
     </div>
+  );
+}
+
+function MoveNoteForm({
+  note,
+  folders,
+  onClose,
+  onMove,
+}: {
+  note: NoteSummary;
+  folders: NoteFolder[];
+  onClose(): void;
+  onMove(folderId: string | null): Promise<void>;
+}) {
+  const [folderId, setFolderId] = useState(note.folderId);
+  const [busy, setBusy] = useState(false);
+  return (
+    <Modal
+      title="Mover nota"
+      variant="modal"
+      onClose={() => {
+        if (!busy) onClose();
+      }}
+    >
+      <form
+        onSubmit={async (event) => {
+          event.preventDefault();
+          setBusy(true);
+          await onMove(folderId);
+          onClose();
+        }}
+      >
+        <div className="field">
+          <Select2
+            showLabel
+            label={`Pasta de «${note.title}»`}
+            value={folderId || ""}
+            options={folderOptionsOf(folders)}
+            onChange={(value) => setFolderId(value || null)}
+          />
+        </div>
+        <div className="form-actions">
+          <Button disabled={busy} onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button variant="primary" type="submit" disabledFocusable={busy}>
+            {busy ? "A mover…" : "Mover"}
+          </Button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -434,12 +647,17 @@ const fieldsOf = (note: Note): Fields => ({
 });
 const same = (a: Fields, b: Fields) => JSON.stringify(a) === JSON.stringify(b);
 
-/** Saves on its own a second after the last change, and when leaving the note. */
+/**
+ * Opens for reading (empty notes open for editing). While editing, saves on its
+ * own a second after the last change, on «Guardar» and when leaving the note.
+ */
 function NoteEditor({
   noteId,
   projectId,
   projects,
   folders,
+  editOnOpen,
+  handle,
   onChanged,
   onClosed,
 }: {
@@ -447,6 +665,9 @@ function NoteEditor({
   projectId: string;
   projects: Project[];
   folders: NoteFolder[];
+  /** Opens for editing even when the note has text. */
+  editOnOpen: boolean;
+  handle: RefObject<NoteHandle | undefined>;
   onChanged(): void;
   onClosed(): void;
 }) {
@@ -456,6 +677,7 @@ function NoteEditor({
   const [attachments, setAttachments] = useState<Note["attachments"]>([]);
   const saved = useRef<{ fields: Fields; version: number }>(undefined);
   const [status, setStatus] = useState<"saved" | "dirty" | "saving">("saved");
+  const [editing, setEditing] = useState<boolean>();
   const [error, setError] = useState("");
   const [tagText, setTagText] = useState("");
   const [drafting, setDrafting] = useState(false);
@@ -473,16 +695,20 @@ function NoteEditor({
     };
     setFields(fieldsOf(remote.data));
     setAttachments(remote.data.attachments);
+    setEditing(
+      (current) => current ?? (editOnOpen || !remote.data!.body.trim()),
+    );
     setStatus("saved");
     setError("");
   }, [remote.data]);
   const latest = useRef(fields);
   latest.current = fields;
-  const pending = useRef<Promise<void>>(undefined);
+  const pending = useRef<Promise<boolean>>(undefined);
+  /** Resolves false when the note could not be saved. */
   const save = async () => {
     const current = latest.current;
     const base = saved.current;
-    if (!current || !base || same(current, base.fields)) return;
+    if (!current || !base || same(current, base.fields)) return true;
     setStatus("saving");
     try {
       const note = await api<Note>(
@@ -495,9 +721,11 @@ function NoteEditor({
       setStatus(same(latest.current!, current) ? "saved" : "dirty");
       setError("");
       onChanged();
+      return true;
     } catch (failure) {
       setStatus("dirty");
       setError((failure as Error).message);
+      return false;
     }
   };
   const flush = () => {
@@ -511,28 +739,31 @@ function NoteEditor({
   }, [fields, status, error]);
   // Leaving the note (another note, another page) keeps what was typed.
   useEffect(() => () => void flush(), []);
+  const trash = async () => {
+    await flush();
+    await api(`/me/notes/${noteId}`, "DELETE");
+    onChanged();
+    setReload((value) => value + 1);
+  };
+  handle.current = {
+    edit: () => setEditing(true),
+    move: async (folderId) => {
+      if (!latest.current) return;
+      latest.current = { ...latest.current, folderId };
+      setFields(latest.current);
+      await flush();
+    },
+    trash,
+  };
   const uploads = useDirectUploads({ noteId }, () => {
     void api<Note>(`/me/notes/${noteId}`).then((note) =>
       setAttachments(note.attachments),
     );
   });
-  const folderOptions = useMemo<SelectOption[]>(
-    () => [
-      {
-        value: "",
-        label: "Sem pasta",
-        render: <span className="muted">Sem pasta</span>,
-      },
-      ...folderPaths(folders).map((folder) => ({
-        value: folder.id,
-        label: folder.path,
-      })),
-    ],
-    [folders],
-  );
+  const folderOptions = useMemo(() => folderOptionsOf(folders), [folders]);
   if (remote.error && !remote.data)
     return <ErrorMessage message={remote.error} />;
-  if (!remote.data || !fields) return <Loading />;
+  if (!remote.data || !fields || editing === undefined) return <Loading />;
   const note = remote.data;
   const deleted = !!note.deletedAt;
   const change = (patch: Partial<Fields>) => {
@@ -595,17 +826,21 @@ function NoteEditor({
   return (
     <article className="note-sheet">
       <div className="note-heading">
-        <label className="note-title-field">
-          <span className="visually-hidden">Título da nota</span>
-          <input
-            maxLength={200}
-            value={fields.title}
-            onChange={(event) => change({ title: event.target.value })}
-            onBlur={() => {
-              if (!fields.title.trim()) change({ title: note.title });
-            }}
-          />
-        </label>
+        {editing ? (
+          <label className="note-title-field">
+            <span className="visually-hidden">Título da nota</span>
+            <input
+              maxLength={200}
+              value={fields.title}
+              onChange={(event) => change({ title: event.target.value })}
+              onBlur={() => {
+                if (!fields.title.trim()) change({ title: note.title });
+              }}
+            />
+          </label>
+        ) : (
+          <h2 className="note-title-static">{fields.title}</h2>
+        )}
         <span className="note-status muted" aria-live="polite">
           {status === "saving"
             ? "A guardar…"
@@ -613,21 +848,34 @@ function NoteEditor({
               ? "Alterações por guardar"
               : `Guardado · ${date(note.updatedAt)}`}
         </span>
-        <Button icon={<RectangleStackIcon />} onClick={() => setDrafting(true)}>
-          Criar rascunhos de issues
-        </Button>
+        {editing ? (
+          <Button
+            variant="primary"
+            icon={<CheckIcon />}
+            disabledFocusable={status === "saving"}
+            onClick={async () => {
+              if (await flush()) setEditing(false);
+            }}
+          >
+            Guardar
+          </Button>
+        ) : (
+          <Button icon={<PencilIcon />} onClick={() => setEditing(true)}>
+            Editar
+          </Button>
+        )}
         <OverflowActions
           label="Ações da nota"
           actions={[
             {
+              label: "Criar rascunhos de issues",
+              icon: <RectangleStackIcon />,
+              onClick: () => setDrafting(true),
+            },
+            {
               label: "Mover para a reciclagem",
               icon: <ArchiveBoxXMarkIcon />,
-              onClick: async () => {
-                await flush();
-                await api(`/me/notes/${noteId}`, "DELETE");
-                onChanged();
-                setReload((value) => value + 1);
-              },
+              onClick: trash,
             },
           ]}
         />
@@ -640,76 +888,113 @@ function NoteEditor({
           </Button>
         </div>
       )}
-      <div className="note-meta">
-        <div className="field">
-          <Select2
-            showLabel
-            label="Pasta"
-            value={fields.folderId || ""}
-            options={folderOptions}
-            onChange={(value) => change({ folderId: value || null })}
-          />
-        </div>
-        <div className="field note-tag-field">
-          <span>Tags</span>
-          <div className="note-tag-input">
-            {fields.tags.map((item) => (
-              <span key={item} className="note-tag">
-                #{item}
-                <button
-                  type="button"
-                  aria-label={`Remover tag ${item}`}
-                  onClick={() =>
-                    change({ tags: fields.tags.filter((tag) => tag !== item) })
-                  }
-                >
-                  <XMarkIcon aria-hidden />
-                </button>
-              </span>
-            ))}
-            <input
-              aria-label="Adicionar tag"
-              placeholder={fields.tags.length ? "" : "daily, reunião…"}
-              value={tagText}
-              onChange={(event) => setTagText(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === ",") {
-                  event.preventDefault();
-                  addTags(tagText);
-                } else if (
-                  event.key === "Backspace" &&
-                  !tagText &&
-                  fields.tags.length
-                )
-                  change({ tags: fields.tags.slice(0, -1) });
-              }}
-              onBlur={() => addTags(tagText)}
-            />
+      {editing ? (
+        <>
+          <div className="note-meta">
+            <div className="field">
+              <Select2
+                showLabel
+                label="Pasta"
+                value={fields.folderId || ""}
+                options={folderOptions}
+                onChange={(value) => change({ folderId: value || null })}
+              />
+            </div>
+            <div className="field note-tag-field">
+              <span>Tags</span>
+              <div className="note-tag-input">
+                {fields.tags.map((item) => (
+                  <span key={item} className="note-tag">
+                    #{item}
+                    <button
+                      type="button"
+                      aria-label={`Remover tag ${item}`}
+                      onClick={() =>
+                        change({
+                          tags: fields.tags.filter((tag) => tag !== item),
+                        })
+                      }
+                    >
+                      <XMarkIcon aria-hidden />
+                    </button>
+                  </span>
+                ))}
+                <input
+                  aria-label="Adicionar tag"
+                  placeholder={fields.tags.length ? "" : "daily, reunião…"}
+                  value={tagText}
+                  onChange={(event) => setTagText(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === ",") {
+                      event.preventDefault();
+                      addTags(tagText);
+                    } else if (
+                      event.key === "Backspace" &&
+                      !tagText &&
+                      fields.tags.length
+                    )
+                      change({ tags: fields.tags.slice(0, -1) });
+                  }}
+                  onBlur={() => addTags(tagText)}
+                />
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
-      <MarkdownField
-        label="Conteúdo"
-        value={fields.body}
-        onChange={(body) => change({ body })}
-        placeholder="Cole aqui a daily ou as notas da reunião. Use # para referenciar issues e testes."
-        references
-        onFiles={uploads.add}
-        footer={
-          <PendingAttachments files={uploads.files} onRemove={uploads.remove} />
-        }
-      />
-      <AttachmentList
-        files={attachments}
-        personal
-        onRemove={(file) =>
-          void api(`/me/attachments/${file.id}`, "DELETE").then(() =>
-            setAttachments((current) =>
-              current.filter((item) => item.id !== file.id),
-            ),
-          )
-        }
-      />
+          <MarkdownField
+            label="Conteúdo"
+            value={fields.body}
+            onChange={(body) => change({ body })}
+            placeholder="Cole aqui a daily ou as notas da reunião. Use # para referenciar issues e testes."
+            references
+            onFiles={uploads.add}
+            footer={
+              <PendingAttachments
+                files={uploads.files}
+                onRemove={uploads.remove}
+              />
+            }
+          />
+          <AttachmentList
+            files={attachments}
+            personal
+            onRemove={(file) =>
+              void api(`/me/attachments/${file.id}`, "DELETE").then(() =>
+                setAttachments((current) =>
+                  current.filter((item) => item.id !== file.id),
+                ),
+              )
+            }
+          />
+        </>
+      ) : (
+        <>
+          {(fields.folderId || !!fields.tags.length) && (
+            <div className="note-meta-static muted">
+              {fields.folderId && (
+                <span>
+                  <FolderIcon aria-hidden />
+                  {
+                    folderPaths(folders).find(
+                      (folder) => folder.id === fields.folderId,
+                    )?.path
+                  }
+                </span>
+              )}
+              {fields.tags.map((item) => (
+                <span key={item} className="note-tag">
+                  #{item}
+                </span>
+              ))}
+            </div>
+          )}
+          {fields.body.trim() ? (
+            <Markdown>{fields.body}</Markdown>
+          ) : (
+            <p className="muted">Nota vazia. Use «Editar» para escrever.</p>
+          )}
+          <AttachmentList files={attachments} personal />
+        </>
+      )}
       {!!drafts.data?.length && (
         <section className="note-drafts">
           <h3 className="section-label">Rascunhos desta nota</h3>
@@ -762,7 +1047,7 @@ function DraftItemsDialog({
   projectId: string;
   onClose(): void;
   onCreated(): void;
-  beforeCreate(): Promise<void>;
+  beforeCreate(): Promise<unknown>;
 }) {
   const items = useMemo(() => noteItems(body), [body]);
   const drafted = new Set(

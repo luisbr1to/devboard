@@ -3967,9 +3967,24 @@ input[type="checkbox"] {
   padding-left: var(--space-2);
   border-left: 1px solid var(--border);
 }
-.note-folder-row {
+.note-folder-row,
+.note-row {
   display: flex;
   align-items: center;
+}
+.note-row[draggable="true"] {
+  cursor: grab;
+}
+.note-row.dragging {
+  opacity: 0.5;
+}
+/* Where a dragged note lands: a folder, or the top level of the tree. */
+.note-folder-row.drop-target,
+.note-tree.drop-target {
+  border-radius: var(--radius-chip);
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+  background: var(--accent-soft);
 }
 .note-folder-toggle,
 .note-link {
@@ -4125,6 +4140,22 @@ button.note-tag {
 }
 .note-status {
   font-size: 12px;
+}
+.note-meta-static {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: 13px;
+}
+.note-meta-static > span:not(.note-tag) {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.note-meta-static svg {
+  width: 16px;
+  height: 16px;
 }
 .note-meta {
   display: grid;

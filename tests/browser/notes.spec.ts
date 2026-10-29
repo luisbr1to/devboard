@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { members, project } from "./fixtures";
-import type { IssueDraft, Note } from "../../src/shared/contracts";
+import type { IssueDraft, Note, NoteFolder } from "../../src/shared/contracts";
 
 const issue = {
   id: "70000000-0000-4000-8000-000000000007",
@@ -13,6 +13,7 @@ const issue = {
 /** The whole app signed in locally, with notes and drafts kept in memory. */
 async function mockApp(page: Page) {
   const notes: Note[] = [];
+  const folders: NoteFolder[] = [];
   const drafts: IssueDraft[] = [];
   const saved: { path: string; data: any }[] = [];
   const preferences: Record<string, unknown> = {};
@@ -109,7 +110,7 @@ async function mockApp(page: Page) {
     else if (path.startsWith("/me/preferences/")) {
       preferences[path.split("/").at(-1)!] = data.value;
       result = { value: data.value };
-    } else if (path === "/me/note-folders") result = [];
+    } else if (path === "/me/note-folders") result = folders;
     else if (path === "/me/note-tags") result = [];
     else if (path === "/me/notes" && method === "POST") {
       status = 201;
@@ -131,7 +132,11 @@ async function mockApp(page: Page) {
       result = notes
         .filter((item) => !item.deletedAt === !url.searchParams.get("deleted"))
         .map(summary);
-    else if (note && method === "PATCH") {
+    else if (note && method === "DELETE") {
+      status = 204;
+      note.deletedAt = "2026-10-26T10:00:00Z";
+      note.version++;
+    } else if (note && method === "PATCH") {
       if (Number(request.headers()["if-match"]) !== note.version) {
         status = 409;
         result = { error: "Este registo foi alterado por outra pessoa." };
@@ -193,7 +198,7 @@ async function mockApp(page: Page) {
       body: JSON.stringify(result),
     });
   });
-  return { notes, drafts, saved, preferences };
+  return { notes, folders, drafts, saved, preferences };
 }
 
 test("a daily pasted in a personal note becomes drafts on the board and then an issue", async ({
@@ -235,7 +240,23 @@ test("a daily pasted in a personal note becomes drafts on the board and then an 
   await page.keyboard.press("Enter");
   await expect.poll(() => notes[0].tags).toEqual(["daily"]);
 
-  await page.getByRole("button", { name: "Criar rascunhos de issues" }).click();
+  // «Guardar» leaves a reading view; «Editar» brings the fields back.
+  await page.getByRole("button", { name: "Guardar" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Daily 26/10" }),
+  ).toBeVisible();
+  await expect(page.getByText("Rever pagamentos")).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Conteúdo" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Editar" }).click();
+  await expect(title).toHaveValue("Daily 26/10");
+  await page.getByRole("button", { name: "Guardar" }).click();
+
+  await page
+    .getByRole("button", { name: "Ações da nota", exact: true })
+    .click();
+  await page
+    .getByRole("menuitem", { name: "Criar rascunhos de issues" })
+    .click();
   const dialog = page.getByRole("dialog", {
     name: "Criar rascunhos de issues",
   });
@@ -399,4 +420,68 @@ test("drafts can also be listed in a table, by state, like the issues", async ({
   await expect(
     page.getByRole("button", { name: "Tabela", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
+});
+
+test("notes are edited, moved and recycled from the sidebar, or dragged into folders", async ({
+  page,
+}) => {
+  const { notes, folders } = await mockApp(page);
+  folders.push({
+    id: "50000000-0000-4000-8000-000000000001",
+    parentId: null,
+    name: "Reuniões",
+  });
+  const note = (id: string, title: string): Note => ({
+    id,
+    folderId: null,
+    title,
+    body: `- Ponto de ${title}`,
+    tags: [],
+    createdAt: "2026-10-26T09:00:00Z",
+    updatedAt: "2026-10-26T09:00:00Z",
+    deletedAt: null,
+    version: 1,
+    attachments: [],
+  });
+  notes.push(
+    note("40000000-0000-4000-8000-000000000101", "Daily"),
+    note("40000000-0000-4000-8000-000000000102", "Retro"),
+  );
+  await page.goto("/");
+  await page.getByRole("button", { name: "Entrar localmente" }).click();
+  await page.getByRole("link", { name: "Notas" }).click();
+
+  // A note with text opens for reading; «Editar» in the sidebar opens it for editing.
+  await page.getByRole("link", { name: "Daily" }).click();
+  await expect(page.getByRole("heading", { name: "Daily" })).toBeVisible();
+  await expect(
+    page.getByRole("textbox", { name: "Título da nota" }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Ações da nota Retro" }).click();
+  await page.getByRole("menuitem", { name: "Editar" }).click();
+  await expect(
+    page.getByRole("textbox", { name: "Título da nota" }),
+  ).toHaveValue("Retro");
+
+  await page
+    .getByRole("link", { name: "Daily" })
+    .dragTo(page.getByRole("button", { name: "Reuniões", exact: true }));
+  await expect.poll(() => notes[0].folderId).toBe(folders[0].id);
+
+  // The open note moves through the editor, so its next save is not a conflict.
+  await page.getByRole("button", { name: "Ações da nota Retro" }).click();
+  await page.getByRole("menuitem", { name: "Mover para pasta…" }).click();
+  const dialog = page.getByRole("dialog", { name: "Mover nota" });
+  await dialog.getByRole("combobox", { name: "Pasta de «Retro»" }).click();
+  await page.getByRole("option", { name: "Reuniões" }).click();
+  await dialog.getByRole("button", { name: "Mover" }).click();
+  await expect.poll(() => notes[1].folderId).toBe(folders[0].id);
+  await page.getByRole("textbox", { name: "Título da nota" }).fill("Retro Q4");
+  await expect.poll(() => notes[1].title).toBe("Retro Q4");
+  await expect(page.getByText(/^Guardado/)).toBeVisible();
+
+  await page.getByRole("button", { name: "Ações da nota Daily" }).click();
+  await page.getByRole("menuitem", { name: "Mover para a reciclagem" }).click();
+  await expect.poll(() => notes[0].deletedAt).not.toBeNull();
+  await expect(page.getByRole("link", { name: "Daily" })).toHaveCount(0);
 });
